@@ -1,0 +1,287 @@
+#!/usr/bin/env python3
+"""
+Assetto Corsa Telemetry Terminal Analytics
+Low-latency terminal-based data analysis using DuckDB Python library
+"""
+
+import sys
+from pathlib import Path
+import argparse
+
+try:
+    import duckdb
+except ImportError:
+    print("❌ Missing duckdb. Install with: pip install duckdb")
+    sys.exit(1)
+
+def analyze_session_summary(csv_path):
+    """Quick session summary statistics"""
+    print("\n" + "="*70)
+    print("📊 SESSION SUMMARY")
+    print("="*70)
+    
+    query = f"""
+    SELECT 
+        COUNT(*) as total_samples,
+        MAX(current_lap) as total_laps,
+        ROUND(MAX(speed_kmh), 2) as top_speed_kmh,
+        ROUND(AVG(CASE WHEN speed_kmh > 5 THEN speed_kmh END), 2) as avg_speed_kmh,
+        ROUND(MAX(lap_time_sec), 1) as session_duration_sec,
+        ROUND(MAX(distance_m) / 1000, 2) as total_distance_km
+    FROM read_csv_auto('{csv_path}')
+    """
+    
+    print_query_results(query)
+
+def analyze_lap_summary(csv_path):
+    """Per-lap statistics pivot table"""
+    print("\n" + "="*70)
+    print("📈 LAP-BY-LAP STATISTICS")
+    print("="*70)
+    
+    query = f"""
+    SELECT 
+        current_lap as lap,
+        COUNT(*) as samples,
+        ROUND(MAX(speed_kmh), 1) as top_speed,
+        ROUND(AVG(CASE WHEN speed_kmh > 5 THEN speed_kmh END), 1) as avg_speed,
+        ROUND(AVG(gas) * 100, 1) as avg_throttle_pct,
+        ROUND(AVG(brake) * 100, 1) as avg_brake_pct,
+        ROUND(MAX(lap_time_sec) - MIN(lap_time_sec), 2) as lap_duration_sec
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY current_lap
+    ORDER BY current_lap
+    """
+    
+    print_query_results(query)
+
+def analyze_speed_distribution(csv_path):
+    """Speed distribution histogram"""
+    print("\n" + "="*70)
+    print("📊 SPEED DISTRIBUTION (Histogram)")
+    print("="*70)
+    
+    query = f"""
+    SELECT 
+        FLOOR(speed_kmh / 10) * 10 as speed_range_kmh,
+        COUNT(*) as frequency
+    FROM read_csv_auto('{csv_path}')
+    WHERE speed_kmh > 0
+    GROUP BY FLOOR(speed_kmh / 10)
+    ORDER BY speed_range_kmh
+    """
+    
+    con = duckdb.connect()
+    result = con.execute(query).fetchall()
+    con.close()
+    
+    if result:
+        max_freq = max(row[1] for row in result)
+        print(f"{'Speed Range':>15} | {'Frequency':>10} | Distribution")
+        print("-" * 70)
+        for speed_range, freq in result:
+            bar_length = int((freq / max_freq) * 40)
+            bar = '█' * bar_length
+            print(f"{int(speed_range):>4d}-{int(speed_range)+10:<3d} km/h | {freq:>10,} | {bar}")
+
+def analyze_throttle_brake_correlation(csv_path):
+    """Analyze throttle/brake patterns"""
+    print("\n" + "="*70)
+    print("🔄 THROTTLE & BRAKE ANALYSIS")
+    print("="*70)
+    
+    query = f"""
+    SELECT 
+        CASE 
+            WHEN gas > 0.9 THEN 'Full Throttle (>90%)'
+            WHEN gas > 0.5 THEN 'Partial Throttle (50-90%)'
+            WHEN gas > 0 THEN 'Light Throttle (<50%)'
+            ELSE 'Coasting'
+        END as throttle_state,
+        COUNT(*) as samples,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as percentage,
+        ROUND(AVG(speed_kmh), 1) as avg_speed
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY 1
+    ORDER BY 2 DESC
+    """
+    
+    print_query_results(query)
+    
+    print("\nBraking Analysis:")
+    query = f"""
+    SELECT 
+        CASE 
+            WHEN brake > 0.7 THEN 'Hard Braking (>70%)'
+            WHEN brake > 0.3 THEN 'Medium Braking (30-70%)'
+            WHEN brake > 0 THEN 'Light Braking (<30%)'
+            ELSE 'No Braking'
+        END as brake_state,
+        COUNT(*) as samples,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 1) as percentage,
+        ROUND(AVG(speed_kmh), 1) as avg_speed
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY 1
+    ORDER BY 2 DESC
+    """
+    
+    print_query_results(query)
+
+def plot_speed_over_time_ascii(csv_path):
+    """ASCII line graph of speed over time"""
+    print("\n" + "="*70)
+    print("📈 SPEED OVER TIME (ASCII Graph)")
+    print("="*70)
+    
+    # Get data points sampled every 100 samples for readability
+    query = f"""
+    WITH sampled_data AS (
+        SELECT 
+            ROW_NUMBER() OVER (ORDER BY lap_time_sec) as row_num,
+            lap_time_sec,
+            speed_kmh
+        FROM read_csv_auto('{csv_path}')
+    )
+    SELECT 
+        lap_time_sec,
+        speed_kmh
+    FROM sampled_data
+    WHERE row_num % 100 = 0
+    ORDER BY lap_time_sec
+    LIMIT 60
+    """
+    
+    con = duckdb.connect()
+    data_points = con.execute(query).fetchall()
+    con.close()
+    
+    if not data_points:
+        print("No data to plot")
+        return
+    
+    max_speed = max(row[1] for row in data_points)
+    min_speed = 0
+    
+    height = 20
+    width = 60
+    
+    print(f"\nSpeed (km/h) vs Time (seconds)")
+    print(f"Max Speed: {max_speed:.0f} km/h | Total Points: {len(data_points)}\n")
+    
+    # Plot points
+    for h in range(height, -1, -1):
+        speed_threshold = (h / height) * max_speed
+        line = f"{speed_threshold:5.0f} │"
+        
+        for i in range(width):
+            if i < len(data_points):
+                _, speed = data_points[i]
+                if abs(speed - speed_threshold) < (max_speed / height * 1.5):
+                    line += "●"
+                else:
+                    line += " "
+            else:
+                line += " "
+        print(line)
+    
+    print("      └" + "─" * width)
+    print(f"       0{' ' * (width-15)}{data_points[-1][0]:.1f}s")
+
+def plot_gas_brake_over_laps(csv_path):
+    """Plot gas and brake usage across laps"""
+    print("\n" + "="*70)
+    print("🎮 GAS & BRAKE USAGE BY LAP")
+    print("="*70)
+    
+    query = f"""
+    SELECT 
+        current_lap as lap,
+        ROUND(AVG(gas) * 100, 1) as avg_gas_pct,
+        ROUND(AVG(brake) * 100, 1) as avg_brake_pct,
+        ROUND(MAX(gas) * 100, 1) as max_gas_pct,
+        ROUND(MAX(brake) * 100, 1) as max_brake_pct
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY current_lap
+    ORDER BY current_lap
+    """
+    
+    con = duckdb.connect()
+    results = con.execute(query).fetchall()
+    con.close()
+    
+    print("\nAverage Inputs Per Lap:")
+    print("Lap | Gas %  | Brake % | Visualization")
+    print("----|--------|---------|" + "-"*50)
+    
+    for lap, gas, brake, max_gas, max_brake in results:
+        gas_bar = '█' * int(gas / 2.5)
+        brake_bar = '░' * int(brake / 2.5)
+        
+        print(f" {lap:2d} | {gas:5.1f}% | {brake:6.1f}% | G:{gas_bar:<20} B:{brake_bar:<20}")
+
+def print_query_results(query):
+    """Execute DuckDB query and print results in formatted table"""
+    con = duckdb.connect()
+    result = con.execute(query)
+    
+    # Get column names
+    columns = [desc[0] for desc in result.description]
+    rows = result.fetchall()
+    con.close()
+    
+    if not rows:
+        print("No results found")
+        return
+    
+    # Calculate column widths
+    col_widths = []
+    for i, col in enumerate(columns):
+        max_width = len(col)
+        for row in rows:
+            val_width = len(str(row[i]))
+            max_width = max(max_width, val_width)
+        col_widths.append(max_width + 2)
+    
+    # Print header
+    header = "│".join(f"{col:^{col_widths[i]}}" for i, col in enumerate(columns))
+    separator = "─".join("─" * w for w in col_widths)
+    
+    print("┌" + separator + "┐")
+    print("│" + header + "│")
+    print("├" + separator + "┤")
+    
+    # Print rows
+    for row in rows:
+        formatted_row = []
+        for i, val in enumerate(row):
+            if isinstance(val, float):
+                formatted_row.append(f"{val:>{col_widths[i]}.2f}")
+            else:
+                formatted_row.append(f"{str(val):>{col_widths[i]}}")
+        print("│" + "│".join(formatted_row) + "│")
+    
+    print("└" + separator + "┘")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Analyze Assetto Corsa telemetry data in the terminal'
+    )
+    parser.add_argument('csv_file', help='Path to telemetry CSV file')
+    
+    args = parser.parse_args()
+    
+    csv_path = Path(args.csv_file)
+    if not csv_path.exists():
+        print(f"❌ File not found: {csv_path}")
+        sys.exit(1)
+    
+    # Run all analyses
+    analyze_session_summary(csv_path)
+    analyze_lap_summary(csv_path)
+    analyze_speed_distribution(csv_path)
+    analyze_throttle_brake_correlation(csv_path)
+    plot_speed_over_time_ascii(csv_path)
+    plot_gas_brake_over_laps(csv_path)
+
+if __name__ == "__main__":
+    main()
