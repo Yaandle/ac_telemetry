@@ -1,14 +1,7 @@
 # AC Telemetry Analytics
 
-**Turning distraction into progress. Turning time into capability.**
+A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
 
-A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into actionable insights—built to practice data analytics skills while racing.
-
-## The Story
-
-I've been spending way too much time on ACC. It's fun, but it was taking away from study, work, and responsibilities. When entertainment becomes routine, discipline drops—hours disappear, deadlines get tighter, and long-term goals start slipping.
-
-So I redirected that energy into something useful: I built a tool that processes and explores large datasets, helping me work through my Data Analytics for Business subject while still enjoying the game.
 
 ## What It Does
 
