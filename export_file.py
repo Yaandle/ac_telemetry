@@ -24,5 +24,5 @@ df['gas'] = df['gas'].round(3)
 df['brake'] = df['brake'].round(3)
 
 # Export to CSV 
-df.to_csv("lap_gas_brake_correct.csv", index=False)
+df.to_csv("lap_gas_brake.csv", index=False)
 con.close()
