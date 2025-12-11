@@ -111,7 +111,7 @@ Simply open any CSV from `telemetry_logs/` in Excel, Google Sheets, or your pref
 
 Or use 'export_file.py' 
 ```bash
-pip install pandas.py
+pip install pandas
 ```
 ```bash
 python export_file.py
