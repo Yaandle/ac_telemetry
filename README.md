@@ -1,41 +1,37 @@
 # AC Telemetry Analytics
-
 A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
 
-
 ## What It Does
-
-### Data Capture (`telemetry_reader.py`)
+### Data Capture (telemetry_reader.py)
 Accesses Assetto Corsa's shared memory in real-time, capturing telemetry at 100Hz:
-- **Speed, inputs**: Throttle, brake, steering angle
-- **Lap tracking**: Current lap, completed laps, lap times
-- **Vehicle data**: Gear, fuel, distance traveled
-- **Real-time logging**: Writes to CSV with session timestamps
-- **Live terminal output**: See telemetry as you drive
 
-### Terminal Analytics (`analyse_telemetry.py`)
+- Speed, inputs: Throttle, brake, steering angle
+- Lap tracking: Current lap, completed laps, lap times
+- Vehicle data: Gear, fuel, distance traveled
+- Real-time logging: Writes to CSV with session timestamps
+- Live terminal output: See telemetry as you drive
+
+### Terminal Analytics (analyse_telemetry.py)
 Processes CSV files using DuckDB with SQL queries to generate:
-- **Session summaries**: Total laps, speed stats, distance covered
-- **Lap-by-lap statistics**: Performance breakdown per lap
-- **Speed distribution histograms**: Visual frequency analysis
-- **Throttle/brake analysis**: Driving style patterns
-- **ASCII visualizations**: Speed over time graphs
-- **Input usage charts**: Gas and brake usage by lap
-  
-### Export Data (`export_file.py`)
-The CSV file is often very large, so instead of importing the whole CSV file into a spreadsheet. 
-Use this file to export only the columns and rows we want for a specific chart. 
 
+- Session summaries: Total laps, speed stats, distance covered
+- Lap-by-lap statistics: Performance breakdown per lap
+- Speed distribution histograms: Visual frequency analysis
+- Throttle/brake analysis: Driving style patterns
+- ASCII visualizations: Speed over time graphs
+- **Interactive HTML graphs: Gas and brake usage per lap with zoom/pan**
 
+### Export Data (export_file.py)
+The CSV file is often very large, so instead of importing the whole CSV file into a spreadsheet. Use this file to export only the columns and rows we want for a specific chart.
 
 ### Excel Analysis
 Open the same CSVs in spreadsheet software for:
+
 - Custom pivot tables and charts
 - Advanced modeling and forecasting
 - Flexible data manipulation and visualization
 
 ## Skills Practiced
-
 - Loading, cleaning, and inspecting large data files
 - Exploring variables, types, distributions, and summaries
 - Descriptive analytics and aggregation techniques
@@ -45,36 +41,34 @@ Open the same CSVs in spreadsheet software for:
 - Real-time data capture from memory-mapped files
 
 ## Quick Start
-
 ### Prerequisites
+Install Git:
 
-**Install Git:**
 - Download from: https://git-scm.com/download/win
 - Run installer with default settings
 - Restart your terminal after installation
 
 ### Setup
+Clone repository:
+```bash
+git clone https://github.com/Yaandle/ac_telemetry.git
+cd ac_telemetry
+```
 
-1. **Clone repository:**
-   ```bash
-   git clone https://github.com/Yaandle/ac_telemetry.git
-   cd ac_telemetry
-   ```
+Create virtual environment:
+```bash
+python -m venv ac_telemetry_venv
+```
 
-2. **Create virtual environment:**
-   ```bash
-   python -m venv ac_telemetry_venv
-   ```
+Activate virtual environment:
+```bash
+ac_telemetry_venv\Scripts\activate
+```
 
-3. **Activate virtual environment:**
-   ```bash
-   ac_telemetry_venv\Scripts\activate
-   ```
-
-4. **Install dependencies:**
-   ```bash
-   pip install duckdb
-   ```
+Install dependencies:
+```bash
+pip install duckdb plotly
+```
 
 ## Usage
 
@@ -103,23 +97,17 @@ Get instant insights with:
 - 📊 Speed distribution histogram
 - 🔄 Throttle & brake analysis
 - 📈 ASCII speed-over-time graph
-- 🎮 Gas & brake usage visualization
+- 🎮 Gas & brake usage visualisation (opens in browser)
 
 ### 3. Excel Analysis (Deep Modeling)
 
-Simply open any CSV from `telemetry_logs/` in Excel, Google Sheets, or your preferred spreadsheet software for custom analysis.
+Simply open any CSV from telemetry_logs/ in Excel, Google Sheets, or your preferred spreadsheet software for custom analysis.
 
-Or use 'export_file.py' 
+Or use 'export_file.py':
 ```bash
 pip install pandas
-```
-```bash
 python export_file.py
 ```
-
-
-
-
 
 ## CSV Data Structure
 
@@ -153,9 +141,9 @@ Leverage familiar tools for custom pivot tables, advanced charts, and flexible d
 **It's a small tool, but it helps me stay consistent, build technical skills, and actively apply concepts instead of just reading them.**
 
 ## Requirements
-
 - Python 3.7+
 - DuckDB
+- Plotly
 - Pandas (for export)
 - Assetto Corsa Competizione (for data capture)
 - Windows (for shared memory access)
