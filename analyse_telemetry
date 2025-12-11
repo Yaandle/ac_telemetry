@@ -211,6 +211,44 @@ def plot_speed_over_time_ascii(csv_path):
     print(f"       0s{' ' * (width-20)}~{max_time/2:.0f}s{' ' * 10}{max_time:.1f}s")
 
 
+def analyze_gas_brake_by_lap(csv_path):
+    """Average gas/brake usage per lap with visualization"""
+    print("\n" + "="*70)
+    print("🎮 GAS & BRAKE USAGE BY LAP")
+    print("="*70)
+    print("Average Inputs Per Lap:")
+    
+    query = f"""
+    SELECT 
+        current_lap as lap,
+        ROUND(AVG(gas) * 100, 1) as gas_pct,
+        ROUND(AVG(brake) * 100, 1) as brake_pct
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY current_lap
+    ORDER BY current_lap
+    """
+    
+    con = duckdb.connect()
+    result = con.execute(query).fetchall()
+    con.close()
+    
+    if not result:
+        print("No results found")
+        return
+    
+    print(f"{'Lap':>3} | {'Gas %':>6} | {'Brake %':>7} | Visualization")
+    print("-" * 70)
+    
+    for lap, gas_pct, brake_pct in result:
+        # Calculate bar lengths (out of 35 chars for gas, proportional for brake)
+        gas_bar_len = int((gas_pct / 100) * 35)
+        brake_bar_len = int((brake_pct / 100) * 35)
+        
+        gas_bar = '█' * gas_bar_len
+        brake_bar = '░' * brake_bar_len
+        
+        print(f"{lap:>3} | {gas_pct:>5.1f}% | {brake_pct:>6.1f}% | G:{gas_bar:<35} B:{brake_bar}")
+
 def plot_gas_brake_per_lap(csv_path, downsample_factor=1):
     """Plot gas and brake data for each lap with clean, simple design"""
     
@@ -433,6 +471,7 @@ def main():
     
     plot_speed_over_time_ascii(csv_path)
     analyze_speed_distribution(csv_path)
+    analyze_gas_brake_by_lap(csv_path)
     plot_gas_brake_per_lap(csv_path)
 
 if __name__ == "__main__":
