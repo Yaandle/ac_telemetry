@@ -156,6 +156,7 @@ Leverage familiar tools for custom pivot tables, advanced charts, and flexible d
 
 - Python 3.7+
 - DuckDB
+- Pandas (for export)
 - Assetto Corsa Competizione (for data capture)
 - Windows (for shared memory access)
 
