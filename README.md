@@ -109,6 +109,18 @@ Get instant insights with:
 
 Simply open any CSV from `telemetry_logs/` in Excel, Google Sheets, or your preferred spreadsheet software for custom analysis.
 
+Or use 'export_file.py' 
+```bash
+pip install pandas.py
+```
+```bash
+python export_file.py
+```
+
+
+
+
+
 ## CSV Data Structure
 
 ```
