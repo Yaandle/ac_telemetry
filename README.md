@@ -21,6 +21,12 @@ Processes CSV files using DuckDB with SQL queries to generate:
 - **Throttle/brake analysis**: Driving style patterns
 - **ASCII visualizations**: Speed over time graphs
 - **Input usage charts**: Gas and brake usage by lap
+  
+### Export Data (`export_file.py`)
+The CSV file is often very large, so instead of importing the whole CSV file into a spreadsheet. 
+Use this file to export only the columns and rows we want for a specific chart. 
+
+
 
 ### Excel Analysis
 Open the same CSVs in spreadsheet software for:
