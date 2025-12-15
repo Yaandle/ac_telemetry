@@ -1,0 +1,751 @@
+#!/usr/bin/env python3
+"""
+Assetto Corsa Telemetry Analysis Pipeline
+Comprehensive analytics, visualization, and ML-ready dataset preparation
+"""
+
+import sys
+import numpy as np
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional
+import argparse
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+try:
+    import duckdb
+except ImportError:
+    print("❌ Missing duckdb. Install with: pip install duckdb")
+    sys.exit(1)
+
+# ============================================================================
+# DATA LOADER
+# ============================================================================
+
+class TelemetryLoader:
+    """Load and query telemetry data"""
+    
+    def __init__(self, csv_path: Path):
+        self.csv_path = csv_path
+        self.con = duckdb.connect()
+        
+    def query(self, sql: str):
+        """Execute SQL query"""
+        return self.con.execute(sql.format(csv=self.csv_path)).fetchall()
+    
+    def query_df(self, sql: str):
+        """Execute query and return as DataFrame-like result"""
+        return self.con.execute(sql.format(csv=self.csv_path))
+    
+    def get_session_info(self) -> Dict:
+        """Get basic session information"""
+        query = f"""
+        SELECT 
+            COUNT(*) as total_samples,
+            MAX(current_lap) as total_laps,
+            MAX(timestamp) as duration_sec,
+            MAX(distance_m) / 1000 as total_distance_km
+        FROM read_csv_auto('{self.csv_path}')
+        """
+        result = self.query(query)[0]
+        return {
+            "samples": result[0],
+            "laps": result[1],
+            "duration_sec": result[2],
+            "distance_km": result[3]
+        }
+    
+    def get_lap_data(self, lap_number: int) -> np.ndarray:
+        """Get all telemetry for a specific lap"""
+        query = f"""
+        SELECT *
+        FROM read_csv_auto('{self.csv_path}')
+        WHERE current_lap = {lap_number}
+        ORDER BY timestamp
+        """
+        return np.array(self.query(query))
+    
+    def close(self):
+        self.con.close()
+
+# ============================================================================
+# FEATURE ENGINEERING
+# ============================================================================
+
+class FeatureEngineer:
+    """Transform raw telemetry into ML-ready features"""
+    
+    @staticmethod
+    def create_state_action_pairs(csv_path: Path, 
+                                   downsample: int = 1) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Create (state, action) pairs for supervised learning
+        
+        State (X): Current driving conditions
+        Action (y): Driver inputs (gas, brake, steer)
+        
+        Returns:
+            X: (N, features) state vectors
+            y: (N, 3) action vectors [gas, brake, steer]
+        """
+        con = duckdb.connect()
+        
+        query = f"""
+        WITH sampled AS (
+            SELECT 
+                ROW_NUMBER() OVER (ORDER BY timestamp) as row_num,
+                speed_ms,
+                accel_longitudinal,
+                accel_lateral,
+                abs_steer,
+                gear,
+                lap_fraction,
+                vx, vy, vz,
+                wheel_slip_fl, wheel_slip_fr, wheel_slip_rl, wheel_slip_rr,
+                gas, brake, steer
+            FROM read_csv_auto('{csv_path}')
+        )
+        SELECT * FROM sampled
+        WHERE row_num % {downsample} = 0
+        """
+        
+        data = np.array(con.execute(query).fetchall())
+        con.close()
+        
+        if len(data) == 0:
+            return np.array([]), np.array([])
+        
+        # State features (columns 1-13, skip row_num)
+        X = data[:, 1:14]
+        
+        # Action features (gas, brake, steer)
+        y = data[:, 14:17]
+        
+        return X, y
+    
+    @staticmethod
+    def create_sequences(csv_path: Path, 
+                        sequence_length: int = 10,
+                        downsample: int = 1) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Create temporal sequences for RNN/LSTM models
+        
+        Returns:
+            X: (N, sequence_length, features) state sequences
+            y: (N, 3) next action to predict
+        """
+        X, y = FeatureEngineer.create_state_action_pairs(csv_path, downsample)
+        
+        if len(X) < sequence_length:
+            return np.array([]), np.array([])
+        
+        X_seq = []
+        y_seq = []
+        
+        for i in range(len(X) - sequence_length):
+            X_seq.append(X[i:i+sequence_length])
+            y_seq.append(y[i+sequence_length])
+        
+        return np.array(X_seq), np.array(y_seq)
+    
+    @staticmethod
+    def normalize_features(X: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """
+        Normalize features using min-max scaling
+        
+        Returns:
+            X_norm: Normalized features
+            min_vals: Minimum values for each feature
+            max_vals: Maximum values for each feature
+        """
+        if X.ndim == 3:  # Sequence data
+            orig_shape = X.shape
+            X_flat = X.reshape(-1, X.shape[-1])
+            min_vals = X_flat.min(axis=0)
+            max_vals = X_flat.max(axis=0)
+            
+            # Avoid division by zero
+            ranges = max_vals - min_vals
+            ranges[ranges == 0] = 1.0
+            
+            X_norm = (X_flat - min_vals) / ranges
+            X_norm = X_norm.reshape(orig_shape)
+        else:
+            min_vals = X.min(axis=0)
+            max_vals = X.max(axis=0)
+            
+            ranges = max_vals - min_vals
+            ranges[ranges == 0] = 1.0
+            
+            X_norm = (X - min_vals) / ranges
+        
+        return X_norm, min_vals, max_vals
+
+# ============================================================================
+# SESSION ANALYTICS
+# ============================================================================
+
+def analyze_session_summary(csv_path: Path):
+    """Comprehensive session statistics"""
+    print("\n" + "="*70)
+    print("📊 SESSION SUMMARY")
+    print("="*70)
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT 
+        COUNT(*) as total_samples,
+        MAX(current_lap) as total_laps,
+        ROUND(MAX(timestamp), 1) as session_duration_sec,
+        ROUND(MAX(timestamp) / 60, 2) as session_duration_min,
+        ROUND(MAX(speed_kmh), 2) as top_speed_kmh,
+        ROUND(AVG(CASE WHEN speed_kmh > 5 THEN speed_kmh END), 2) as avg_speed_kmh,
+        ROUND(MAX(distance_m) / 1000, 2) as total_distance_km,
+        ROUND(MAX(gas), 3) as max_throttle,
+        ROUND(MAX(brake), 3) as max_brake,
+        ROUND(AVG(abs_steer), 4) as avg_abs_steer,
+        ROUND(MAX(abs_steer), 4) as max_abs_steer,
+        ROUND(MAX(ABS(accel_longitudinal)) / 9.81, 2) as max_accel_g_long,
+        ROUND(MAX(ABS(accel_lateral)) / 9.81, 2) as max_accel_g_lat
+    FROM read_csv_auto('{csv_path}')
+    """
+    
+    result = con.execute(query).fetchall()[0]
+    con.close()
+    
+    print(f"{'Total Samples:':.<30} {result[0]:>10,}")
+    print(f"{'Total Laps:':.<30} {result[1]:>10}")
+    print(f"{'Duration:':.<30} {result[3]:>10.2f} min")
+    print(f"{'Top Speed:':.<30} {result[4]:>10.2f} km/h ({result[4]/1.609:.1f} mph)")
+    print(f"{'Average Speed:':.<30} {result[5]:>10.2f} km/h")
+    print(f"{'Total Distance:':.<30} {result[6]:>10.2f} km")
+    print(f"{'Max Throttle:':.<30} {result[7]:>10.1%}")
+    print(f"{'Max Brake:':.<30} {result[8]:>10.1%}")
+    print(f"{'Avg |Steering|:':.<30} {result[9]:>10.4f}")
+    print(f"{'Max |Steering|:':.<30} {result[10]:>10.4f}")
+    print(f"{'Max Longitudinal Accel:':.<30} {result[11]:>10.2f} G")
+    print(f"{'Max Lateral Accel:':.<30} {result[12]:>10.2f} G")
+    print("="*70)
+
+def analyze_lap_summary(csv_path: Path):
+    """Per-lap performance breakdown"""
+    print("\n" + "="*70)
+    print("📈 LAP-BY-LAP SUMMARY")
+    print("="*70)
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT 
+        current_lap as lap,
+        COUNT(*) as samples,
+        ROUND(MAX(speed_kmh), 1) as top_speed,
+        ROUND(AVG(CASE WHEN speed_kmh > 5 THEN speed_kmh END), 1) as avg_speed,
+        ROUND(AVG(gas) * 100, 1) as avg_throttle,
+        ROUND(AVG(brake) * 100, 1) as avg_brake,
+        ROUND(AVG(abs_steer) * 100, 2) as avg_steer,
+        ROUND(MAX(timestamp) - MIN(timestamp), 3) as lap_duration
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY current_lap
+    ORDER BY current_lap
+    """
+    
+    results = con.execute(query).fetchall()
+    con.close()
+    
+    print(f"{'Lap':>4} │ {'Samples':>8} │ {'Top':>6} │ {'Avg':>6} │ {'Gas%':>5} │ {'Brake%':>6} │ {'Steer%':>6} │ {'Time':>7}")
+    print("─"*70)
+    
+    for row in results:
+        lap, samples, top, avg, gas, brake, steer, duration = row
+        minutes = int(duration // 60)
+        seconds = duration % 60
+        time_str = f"{minutes}:{seconds:05.2f}"
+        print(f"{lap:>4} │ {samples:>8,} │ {top:>6.1f} │ {avg:>6.1f} │ {gas:>5.1f} │ {brake:>6.1f} │ {steer:>6.2f} │ {time_str:>7}")
+
+def analyze_input_distributions(csv_path: Path):
+    """Analyze throttle, brake, and steering distributions"""
+    print("\n" + "="*70)
+    print("📊 INPUT DISTRIBUTION ANALYSIS")
+    print("="*70)
+    
+    con = duckdb.connect()
+    
+    # Throttle distribution
+    print("\n🎮 THROTTLE USAGE")
+    query = f"""
+    SELECT 
+        CASE 
+            WHEN gas > 0.9 THEN 'Full (>90%)'
+            WHEN gas > 0.7 THEN 'High (70-90%)'
+            WHEN gas > 0.5 THEN 'Medium (50-70%)'
+            WHEN gas > 0.2 THEN 'Low (20-50%)'
+            WHEN gas > 0 THEN 'Minimal (<20%)'
+            ELSE 'Off'
+        END as throttle_range,
+        COUNT(*) as samples,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as pct
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY 1
+    ORDER BY 2 DESC
+    """
+    
+    results = con.execute(query).fetchall()
+    max_samples = max(r[1] for r in results)
+    
+    for range_name, samples, pct in results:
+        bar_len = int((samples / max_samples) * 40)
+        bar = '█' * bar_len
+        print(f"{range_name:.<20} {samples:>8,} ({pct:>5.2f}%) {bar}")
+    
+    # Brake distribution
+    print("\n🛑 BRAKE USAGE")
+    query = f"""
+    SELECT 
+        CASE 
+            WHEN brake > 0.7 THEN 'Hard (>70%)'
+            WHEN brake > 0.5 THEN 'Medium (50-70%)'
+            WHEN brake > 0.3 THEN 'Light (30-50%)'
+            WHEN brake > 0 THEN 'Minimal (<30%)'
+            ELSE 'Off'
+        END as brake_range,
+        COUNT(*) as samples,
+        ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2) as pct
+    FROM read_csv_auto('{csv_path}')
+    GROUP BY 1
+    ORDER BY 2 DESC
+    """
+    
+    results = con.execute(query).fetchall()
+    max_samples = max(r[1] for r in results)
+    
+    for range_name, samples, pct in results:
+        bar_len = int((samples / max_samples) * 40)
+        bar = '█' * bar_len
+        print(f"{range_name:.<20} {samples:>8,} ({pct:>5.2f}%) {bar}")
+    
+    # Speed distribution
+    print("\n🏎️  SPEED DISTRIBUTION")
+    query = f"""
+    SELECT 
+        FLOOR(speed_kmh / 20) * 20 as speed_bin,
+        COUNT(*) as samples
+    FROM read_csv_auto('{csv_path}')
+    WHERE speed_kmh > 0
+    GROUP BY 1
+    ORDER BY 1
+    """
+    
+    results = con.execute(query).fetchall()
+    max_samples = max(r[1] for r in results)
+    
+    for speed_bin, samples in results:
+        bar_len = int((samples / max_samples) * 40)
+        bar = '█' * bar_len
+        print(f"{int(speed_bin):>3}-{int(speed_bin)+20:<3} km/h {samples:>8,} {bar}")
+    
+    con.close()
+
+def analyze_wheel_telemetry(csv_path: Path):
+    """Analyze wheel slip and load distributions"""
+    print("\n" + "="*70)
+    print("🔧 WHEEL TELEMETRY ANALYSIS")
+    print("="*70)
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT 
+        ROUND(AVG(wheel_slip_fl), 4) as avg_slip_fl,
+        ROUND(AVG(wheel_slip_fr), 4) as avg_slip_fr,
+        ROUND(AVG(wheel_slip_rl), 4) as avg_slip_rl,
+        ROUND(AVG(wheel_slip_rr), 4) as avg_slip_rr,
+        ROUND(MAX(wheel_slip_fl), 4) as max_slip_fl,
+        ROUND(MAX(wheel_slip_fr), 4) as max_slip_fr,
+        ROUND(MAX(wheel_slip_rl), 4) as max_slip_rl,
+        ROUND(MAX(wheel_slip_rr), 4) as max_slip_rr,
+        ROUND(AVG(wheel_load_fl), 1) as avg_load_fl,
+        ROUND(AVG(wheel_load_fr), 1) as avg_load_fr,
+        ROUND(AVG(wheel_load_rl), 1) as avg_load_rl,
+        ROUND(AVG(wheel_load_rr), 1) as avg_load_rr
+    FROM read_csv_auto('{csv_path}')
+    """
+    
+    result = con.execute(query).fetchall()[0]
+    con.close()
+    
+    print("\n🔄 WHEEL SLIP (Average | Max)")
+    print(f"  Front Left:  {result[0]:.4f} | {result[4]:.4f}")
+    print(f"  Front Right: {result[1]:.4f} | {result[5]:.4f}")
+    print(f"  Rear Left:   {result[2]:.4f} | {result[6]:.4f}")
+    print(f"  Rear Right:  {result[3]:.4f} | {result[7]:.4f}")
+    
+    print("\n⚖️  WHEEL LOAD (Average, Newtons)")
+    print(f"  Front Left:  {result[8]:>8.1f} N")
+    print(f"  Front Right: {result[9]:>8.1f} N")
+    print(f"  Rear Left:   {result[10]:>8.1f} N")
+    print(f"  Rear Right:  {result[11]:>8.1f} N")
+    
+    total_load = sum(result[8:12])
+    print(f"  Total:       {total_load:>8.1f} N ({total_load/9.81:.0f} kg)")
+
+def analyze_suspension_telemetry(csv_path: Path):
+    """Analyze suspension travel and dynamics"""
+    print("\n" + "="*70)
+    print("🔧 SUSPENSION TELEMETRY ANALYSIS")
+    print("="*70)
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT 
+        ROUND(AVG(suspension_travel_fl) * 1000, 2) as avg_travel_fl_mm,
+        ROUND(AVG(suspension_travel_fr) * 1000, 2) as avg_travel_fr_mm,
+        ROUND(AVG(suspension_travel_rl) * 1000, 2) as avg_travel_rl_mm,
+        ROUND(AVG(suspension_travel_rr) * 1000, 2) as avg_travel_rr_mm,
+        ROUND(MAX(suspension_travel_fl) * 1000, 2) as max_travel_fl_mm,
+        ROUND(MAX(suspension_travel_fr) * 1000, 2) as max_travel_fr_mm,
+        ROUND(MAX(suspension_travel_rl) * 1000, 2) as max_travel_rl_mm,
+        ROUND(MAX(suspension_travel_rr) * 1000, 2) as max_travel_rr_mm,
+        ROUND(MIN(suspension_travel_fl) * 1000, 2) as min_travel_fl_mm,
+        ROUND(MIN(suspension_travel_fr) * 1000, 2) as min_travel_fr_mm,
+        ROUND(MIN(suspension_travel_rl) * 1000, 2) as min_travel_rl_mm,
+        ROUND(MIN(suspension_travel_rr) * 1000, 2) as min_travel_rr_mm
+    FROM read_csv_auto('{csv_path}')
+    """
+    
+    result = con.execute(query).fetchall()[0]
+    con.close()
+    
+    print("\n🔄 SUSPENSION TRAVEL (millimeters)")
+    print("\n  Average Travel:")
+    print(f"    Front Left:  {result[0]:>6.2f} mm")
+    print(f"    Front Right: {result[1]:>6.2f} mm")
+    print(f"    Rear Left:   {result[2]:>6.2f} mm")
+    print(f"    Rear Right:  {result[3]:>6.2f} mm")
+    
+    print("\n  Maximum Travel (compression):")
+    print(f"    Front Left:  {result[4]:>6.2f} mm")
+    print(f"    Front Right: {result[5]:>6.2f} mm")
+    print(f"    Rear Left:   {result[6]:>6.2f} mm")
+    print(f"    Rear Right:  {result[7]:>6.2f} mm")
+    
+    print("\n  Minimum Travel (extension):")
+    print(f"    Front Left:  {result[8]:>6.2f} mm")
+    print(f"    Front Right: {result[9]:>6.2f} mm")
+    print(f"    Rear Left:   {result[10]:>6.2f} mm")
+    print(f"    Rear Right:  {result[11]:>6.2f} mm")
+    
+    # Calculate front/rear bias
+    avg_front = (result[0] + result[1]) / 2
+    avg_rear = (result[2] + result[3]) / 2
+    
+    print("\n  Front/Rear Balance:")
+    print(f"    Average Front: {avg_front:>6.2f} mm")
+    print(f"    Average Rear:  {avg_rear:>6.2f} mm")
+    
+    if avg_front > avg_rear:
+        bias = ((avg_front - avg_rear) / avg_front) * 100
+        print(f"    → Front-biased (+{bias:.1f}% more travel)")
+    elif avg_rear > avg_front:
+        bias = ((avg_rear - avg_front) / avg_rear) * 100
+        print(f"    → Rear-biased (+{bias:.1f}% more travel)")
+    else:
+        print(f"    → Balanced")
+
+# ============================================================================
+# VISUALIZATION
+# ============================================================================
+
+def plot_speed_trace(csv_path: Path, output_file: str = "speed_trace.html"):
+    """Interactive speed trace with lap markers"""
+    print("\n📈 Generating speed trace visualization...")
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT timestamp, speed_kmh, current_lap
+    FROM read_csv_auto('{csv_path}')
+    ORDER BY timestamp
+    """
+    
+    data = con.execute(query).fetchall()
+    con.close()
+    
+    timestamps = [d[0] for d in data]
+    speeds = [d[1] for d in data]
+    laps = [d[2] for d in data]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=timestamps,
+        y=speeds,
+        mode='lines',
+        name='Speed',
+        line=dict(color='#3498db', width=1.5),
+        hovertemplate='Time: %{x:.2f}s<br>Speed: %{y:.1f} km/h<extra></extra>'
+    ))
+    
+    # Add lap change markers
+    lap_changes = []
+    for i in range(1, len(laps)):
+        if laps[i] != laps[i-1]:
+            lap_changes.append(timestamps[i])
+    
+    for lap_time in lap_changes:
+        fig.add_vline(x=lap_time, line_dash="dash", line_color="red", opacity=0.5)
+    
+    fig.update_layout(
+        title="Speed Trace Over Time",
+        xaxis_title="Time (seconds)",
+        yaxis_title="Speed (km/h)",
+        hovermode='x unified',
+        template='plotly_white'
+    )
+    
+    fig.write_html(output_file)
+    print(f"✅ Saved: {output_file}")
+
+def plot_control_inputs(csv_path: Path, lap: Optional[int] = None, 
+                       output_file: str = "control_inputs.html"):
+    """Plot gas, brake, and steering for analysis"""
+    print(f"\n🎮 Generating control input visualization (Lap {lap if lap else 'All'})...")
+    
+    con = duckdb.connect()
+    
+    if lap:
+        query = f"""
+        SELECT timestamp, gas, brake, steer, speed_kmh
+        FROM read_csv_auto('{csv_path}')
+        WHERE current_lap = {lap}
+        ORDER BY timestamp
+        """
+    else:
+        query = f"""
+        SELECT timestamp, gas, brake, steer, speed_kmh
+        FROM read_csv_auto('{csv_path}')
+        ORDER BY timestamp
+        """
+    
+    data = con.execute(query).fetchall()
+    con.close()
+    
+    timestamps = [d[0] for d in data]
+    gas = [d[1] for d in data]
+    brake = [d[2] for d in data]
+    steer = [d[3] for d in data]
+    speed = [d[4] for d in data]
+    
+    fig = make_subplots(
+        rows=3, cols=1,
+        subplot_titles=('Throttle & Brake', 'Steering', 'Speed'),
+        vertical_spacing=0.08
+    )
+    
+    # Throttle and brake
+    fig.add_trace(go.Scatter(x=timestamps, y=gas, name='Gas', 
+                            line=dict(color='#2ecc71')), row=1, col=1)
+    fig.add_trace(go.Scatter(x=timestamps, y=brake, name='Brake', 
+                            line=dict(color='#e74c3c')), row=1, col=1)
+    
+    # Steering
+    fig.add_trace(go.Scatter(x=timestamps, y=steer, name='Steering', 
+                            line=dict(color='#9b59b6')), row=2, col=1)
+    
+    # Speed
+    fig.add_trace(go.Scatter(x=timestamps, y=speed, name='Speed', 
+                            line=dict(color='#3498db')), row=3, col=1)
+    
+    fig.update_xaxes(title_text="Time (s)", row=3, col=1)
+    fig.update_yaxes(title_text="Input [0-1]", row=1, col=1)
+    fig.update_yaxes(title_text="Steer [-1,1]", row=2, col=1)
+    fig.update_yaxes(title_text="Speed (km/h)", row=3, col=1)
+    
+    fig.update_layout(height=900, showlegend=True, template='plotly_white',
+                     title_text=f"Control Inputs - Lap {lap}" if lap else "Control Inputs - Full Session")
+    
+    fig.write_html(output_file)
+    print(f"✅ Saved: {output_file}")
+
+def plot_acceleration_analysis(csv_path: Path, output_file: str = "acceleration.html"):
+    """G-G diagram and acceleration analysis"""
+    print("\n🎯 Generating acceleration analysis...")
+    
+    con = duckdb.connect()
+    
+    query = f"""
+    SELECT 
+        accel_longitudinal / 9.81 as long_g,
+        accel_lateral / 9.81 as lat_g,
+        speed_kmh
+    FROM read_csv_auto('{csv_path}')
+    WHERE speed_kmh > 10
+    """
+    
+    data = con.execute(query).fetchall()
+    con.close()
+    
+    long_g = [d[0] for d in data]
+    lat_g = [d[1] for d in data]
+    speed = [d[2] for d in data]
+    
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=lat_g,
+        y=long_g,
+        mode='markers',
+        marker=dict(
+            size=2,
+            color=speed,
+            colorscale='Viridis',
+            showscale=True,
+            colorbar=dict(title="Speed (km/h)")
+        ),
+        text=[f"{s:.0f} km/h" for s in speed],
+        hovertemplate='Lat: %{x:.2f}g<br>Long: %{y:.2f}g<br>Speed: %{text}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title="G-G Diagram (Acceleration Envelope)",
+        xaxis_title="Lateral Acceleration (g)",
+        yaxis_title="Longitudinal Acceleration (g)",
+        template='plotly_white',
+        height=700,
+        width=700,
+        xaxis=dict(scaleanchor="y", scaleratio=1),
+        yaxis=dict(scaleanchor="x", scaleratio=1)
+    )
+    
+    fig.write_html(output_file)
+    print(f"✅ Saved: {output_file}")
+
+# ============================================================================
+# ML DATASET PREPARATION
+# ============================================================================
+
+def prepare_ml_dataset(csv_path: Path, output_dir: Path = Path("ml_data")):
+    """Prepare and save ML-ready datasets"""
+    print("\n" + "="*70)
+    print("🤖 ML DATASET PREPARATION")
+    print("="*70)
+    
+    output_dir.mkdir(exist_ok=True)
+    
+    # Frame-by-frame dataset
+    print("\n📊 Creating frame-by-frame dataset...")
+    X, y = FeatureEngineer.create_state_action_pairs(csv_path, downsample=1)
+    
+    if len(X) > 0:
+        print(f"  State features (X): {X.shape}")
+        print(f"  Action labels (y): {y.shape}")
+        
+        # Normalize
+        X_norm, min_vals, max_vals = FeatureEngineer.normalize_features(X)
+        
+        # Save
+        np.save(output_dir / "X_states.npy", X)
+        np.save(output_dir / "y_actions.npy", y)
+        np.save(output_dir / "X_states_normalized.npy", X_norm)
+        np.save(output_dir / "normalization_min.npy", min_vals)
+        np.save(output_dir / "normalization_max.npy", max_vals)
+        
+        print(f"  ✅ Saved to {output_dir}/")
+        print(f"     - X_states.npy (raw features)")
+        print(f"     - X_states_normalized.npy (normalized)")
+        print(f"     - y_actions.npy (gas, brake, steer)")
+        print(f"     - normalization_min/max.npy (for inference)")
+    
+    # Sequence dataset
+    print("\n🔁 Creating sequence dataset (for LSTM/RNN)...")
+    X_seq, y_seq = FeatureEngineer.create_sequences(csv_path, sequence_length=10, downsample=2)
+    
+    if len(X_seq) > 0:
+        print(f"  Sequence features (X): {X_seq.shape}")
+        print(f"  Next actions (y): {y_seq.shape}")
+        
+        X_seq_norm, _, _ = FeatureEngineer.normalize_features(X_seq)
+        
+        np.save(output_dir / "X_sequences.npy", X_seq)
+        np.save(output_dir / "X_sequences_normalized.npy", X_seq_norm)
+        np.save(output_dir / "y_sequences.npy", y_seq)
+        
+        print(f"  ✅ Saved sequence data")
+    
+    # Feature descriptions
+    feature_names = [
+        "speed_ms", "accel_longitudinal", "accel_lateral", "abs_steer",
+        "gear", "lap_fraction", "vx", "vy", "vz",
+        "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr"
+    ]
+    
+    with open(output_dir / "feature_names.txt", "w") as f:
+        f.write("STATE FEATURES (X):\n")
+        for i, name in enumerate(feature_names):
+            f.write(f"  {i}: {name}\n")
+        f.write("\nACTION LABELS (y):\n")
+        f.write("  0: gas [0-1]\n")
+        f.write("  1: brake [0-1]\n")
+        f.write("  2: steer [-1, 1]\n")
+    
+    print("\n📝 Feature descriptions saved to feature_names.txt")
+    print("="*70)
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Comprehensive telemetry analysis and ML dataset preparation'
+    )
+    parser.add_argument('csv_file', help='Path to telemetry CSV file')
+    parser.add_argument('--ml', action='store_true', 
+                       help='Prepare ML-ready datasets')
+    parser.add_argument('--lap', type=int, 
+                       help='Analyze specific lap')
+    parser.add_argument('--plots', action='store_true',
+                       help='Generate all visualizations')
+    
+    args = parser.parse_args()
+    
+    csv_path = Path(args.csv_file)
+    if not csv_path.exists():
+        print(f"❌ File not found: {csv_path}")
+        sys.exit(1)
+    
+    print("="*70)
+    print("ASSETTO CORSA TELEMETRY ANALYSIS PIPELINE")
+    print("="*70)
+    print(f"📁 Data: {csv_path}")
+    
+    # Core analytics    
+    analyze_session_summary(csv_path)
+    analyze_lap_summary(csv_path)
+    analyze_input_distributions(csv_path)
+    analyze_wheel_telemetry(csv_path)
+    analyze_suspension_telemetry(csv_path)
+    
+    # ML dataset preparation
+    if args.ml:
+        prepare_ml_dataset(csv_path)
+    
+    # Visualizations
+    if args.plots:
+        plot_speed_trace(csv_path)
+        plot_control_inputs(csv_path, lap=args.lap)
+        plot_acceleration_analysis(csv_path)
+    
+    print("\n" + "="*70)
+    print("✅ ANALYSIS COMPLETE")
+    print("="*70)
+    
+    if not args.ml:
+        print("\n💡 Tip: Use --ml to generate ML-ready datasets")
+    if not args.plots:
+        print("💡 Tip: Use --plots to generate interactive visualizations")
+
+if __name__ == "__main__":
+    main()
