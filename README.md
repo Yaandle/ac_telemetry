@@ -15,7 +15,7 @@ Captures real-time telemetry from Assetto Corsa's shared memory at **100Hz**:
 - Derived features: Longitudinal/lateral acceleration, lap progress
 
 **Advanced Telemetry:**
-- Wheel dynamics: Slip ratios, loads, camber angles, suspension travel (all 4 wheels)
+- Wheel dynamics: Slip ratios, camber angles, suspension travel (all 4 wheels)
 - Smoothed control inputs: Moving average filter for noise reduction
 - Real-time session tracking: Automatic lap detection, statistics
 
@@ -149,7 +149,7 @@ Max Brake:        98.7%
 Max Accel:        1.85 G long, 2.12 G lat
 Wheel Dynamics:
   Avg Slip: FL 0.53 | FR 0.54 | RL 1.06 | RR 1.05
-  Avg Load: FL 86N | FR 92N | RL 88N | RR 91N
+
   Suspension: Front 28mm | Rear 38mm (rear-biased)
 ```
 
@@ -239,7 +239,7 @@ gas_smooth, brake_smooth, steer_smooth    # Filtered inputs
 
 **Wheel Telemetry (FL, FR, RL, RR):**
 ```
-wheel_slip_*, wheel_load_*, camber_*, suspension_travel_*
+wheel_slip_*, camber_*, suspension_travel_*
 ```
 
 **Other:**
@@ -249,15 +249,14 @@ fuel_kg
 
 ### ML Dataset Format
 
-**State Features (X):** 25-dimensional vector
+**State Features (X):** 21-dimensional vector
 - Basic state (9 features):
   speed_ms, accel_longitudinal, accel_lateral, abs_steer
   gear, lap_fraction
   vx, vy, vz (velocity components)
 
-- Wheel dynamics (16 features):
+- Wheel dynamics (12 features):
   wheel_slip_fl/fr/rl/rr (slip ratios)
-  wheel_load_fl/fr/rl/rr (normal forces)
   camber_fl/fr/rl/rr (camber angles)
   suspension_travel_fl/fr/rl/rr (travel distance)
 
