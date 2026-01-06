@@ -1,12 +1,11 @@
 # AC Telemetry Analytics
-A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
 
-A Python-based telemetry system and analysis tool for Assetto Corsa Competizione that captures high-frequency real-time driving data and transforms it into insights, built to practice data analytics skills while racing, with ready datasets for machine learning experiments.
+A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
 
 ## What It Does
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
-Captures real-time telemetry from Assetto Corsa's shared memory at **100Hz**:
+Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 
 **Core Telemetry:**
 - Speed, inputs: Throttle, brake, steering (raw + smoothed)
@@ -15,7 +14,7 @@ Captures real-time telemetry from Assetto Corsa's shared memory at **100Hz**:
 - Derived features: Longitudinal/lateral acceleration, lap progress
 
 **Advanced Telemetry:**
-- Wheel dynamics: Slip ratios, camber angles, suspension travel (all 4 wheels)
+- Wheel dynamics: Slip ratios, slip angles, suspension travel (all 4 wheels)
 - Smoothed control inputs: Moving average filter for noise reduction
 - Real-time session tracking: Automatic lap detection, statistics
 
@@ -28,18 +27,37 @@ Comprehensive analysis using DuckDB SQL queries:
 - Session summaries: Max/avg speeds, G-forces, total distance
 - Lap-by-lap statistics: Performance breakdown per lap
 - Input distributions: Throttle/brake/steering usage patterns
-- Wheel telemetry: Slip, load, camber, and suspension travel analysis
+- Wheel telemetry: Slip, slip angles, and suspension travel analysis
 
 **Visualizations:**
 - Interactive HTML plots: Speed traces, control inputs, G-G diagrams
-- ASCII terminal graphs: Quick visual feedback
 - Export-ready data: Cleaned datasets for further analysis
 
 **ML Dataset Preparation:**
-- State-action pairs: (13 features) → (3 control outputs)
+- State-action pairs: (18 features) → (3 control outputs)
 - Temporal sequences: For LSTM/RNN models
 - Normalized datasets: Ready for training
 - Feature documentation: Complete schema reference
+
+### 🧩 Feature Schema (`feature_schema.py`)
+**Single source of truth** for ML feature definitions:
+
+**Purpose:**
+- Ensures consistency across all pipeline components
+- Prevents feature order mismatches between training and inference
+- Validates data integrity with runtime checks
+- Eliminates action leakage (actions never included as state inputs)
+
+**What It Provides:**
+- `POLICY_FEATURES`: Exact 18-feature state vector definition
+- `ACTION_LABELS`: Output labels (gas, brake, steer)
+- `build_state_from_row()`: Construct state from CSV data
+- `build_state_from_memory()`: Construct state from shared memory
+- `validate_state()`: Runtime validation of feature count
+- `validate_normalization()`: Check normalization array shapes
+
+**Why It Matters:**
+Without a centralized schema, it's easy to introduce bugs where training uses features in one order but inference expects a different order. This file eliminates that entire class of errors by making feature order explicit and validated.
 
 ### 🤖 ML Training (`ml_trainer.py`)
 Train baseline models to predict driver inputs from vehicle state:
@@ -55,6 +73,11 @@ Train baseline models to predict driver inputs from vehicle state:
 - Model comparison: Automated benchmarking
 
 **Output:** Trained models, performance reports, visualization plots
+
+**Feature Validation:**
+- Automatically validates feature count matches schema
+- Checks normalization arrays for consistency
+- Prevents training with mismatched data
 
 ### 📦 Export Tools (`export_file.py`)
 Efficiently extract specific columns and rows from large CSV files for spreadsheet analysis without importing entire datasets.
@@ -73,26 +96,27 @@ Efficiently extract specific columns and rows from large CSV files for spreadshe
 This pipeline treats the car as a robotic system with direct parallels to real-world robotics:
 
 | Telemetry Feature | Robotics Analogue |
-|-------------------|-------------------|
+|------------------|-------------------|
 | Velocity vector (vx, vy, vz) | Odometry / state estimation |
 | Acceleration (ax, ay, az) | IMU measurements |
-| Wheel slip/load | Contact/terrain feedback |
+| Wheel slip/angles | Contact/terrain feedback |
 | Gas/brake/steer | Actuator commands |
 | Lap fraction | Mission progress tracker |
 
-This enables **sim-to-real transfer research** and **autonomous driving experiments**.
+This enables sim-to-real transfer research and autonomous driving experiments.
 
 ## Quick Start
 
 ### Prerequisites
+
 **Install Git:**
-- Download from: https://git-scm.com/download/win
-- Run installer with default settings
-- Restart terminal after installation
+1. Download from: https://git-scm.com/download/win
+2. Run installer with default settings
+3. Restart terminal after installation
 
 **Requirements:**
 - Python 3.7+
-- Assetto Corsa (running on Windows for shared memory access)
+- Assetto Corsa Competizione (running on Windows for shared memory access)
 
 ### Setup
 
@@ -115,29 +139,27 @@ ac_telemetry_venv\Scripts\activate
 **4. Install dependencies:**
 ```bash
 # Core analytics
-pip install duckdb plotly
+pip install duckdb plotly pandas
 
 # ML training (optional)
-pip install scikit-learn matplotlib
-
-# Data export (optional)
-pip install pandas
+pip install scikit-learn matplotlib joblib
 ```
 
 ## Usage
 
 ### 1️⃣ Capture Telemetry
 
-Start Assetto Corsa, then run:
+Start Assetto Corsa Competizione, then run:
+
 ```bash
 python telemetry_reader.py
 ```
 
 **What happens:**
-- ✅ Connects to AC's shared memory
+- ✅ Connects to ACC's shared memory
 - 📊 Displays live telemetry in terminal (5-second updates)
-- 💾 Logs data to `telemetry_logs/ac_session_TIMESTAMP.csv`
-- ⏹️ Press `Ctrl+C` to stop and view session statistics
+- 💾 Logs data to `telemetry_logs/acc_session_TIMESTAMP.csv`
+- ⏹️ Press Ctrl+C to stop and view session statistics
 
 **Output example:**
 ```
@@ -149,7 +171,6 @@ Max Brake:        98.7%
 Max Accel:        1.85 G long, 2.12 G lat
 Wheel Dynamics:
   Avg Slip: FL 0.53 | FR 0.54 | RL 1.06 | RR 1.05
-
   Suspension: Front 28mm | Rear 38mm (rear-biased)
 ```
 
@@ -157,7 +178,7 @@ Wheel Dynamics:
 
 **Basic analytics:**
 ```bash
-python telemetry_analysis.py telemetry_logs/ac_session_20251214_143022.csv
+python telemetry_analysis.py telemetry_logs/acc_session_20251214_143022.csv
 ```
 
 **With visualizations:**
@@ -189,7 +210,7 @@ python ml_trainer.py --data_dir ml_data --output_dir ml_results
 
 **Example results:**
 ```
-Linear Regression (25 features with wheel dynamics):
+Linear Regression (18 features):
   Gas R²:   0.564
   Brake R²: 0.556
   Steer R²: 0.321
@@ -199,10 +220,9 @@ MLP (128,64,32):
   Gas R²:   0.6-0.7 (expected)
   Brake R²: 0.6-0.7 (expected)
   Steer R²: 0.4-0.5 (expected)
-  
-Note: Wheel dynamics features (slip, load, camber, suspension) 
-significantly improve prediction accuracy.
 ```
+
+**Note:** Wheel dynamics features (slip, angles, suspension) significantly improve prediction accuracy.
 
 ### 4️⃣ Export for Spreadsheets
 
@@ -214,17 +234,17 @@ Extract specific columns and rows for custom analysis in Excel/Google Sheets wit
 
 ## Data Structure
 
-### CSV Format (42 columns, 100Hz sampling)
+### CSV Format (38 columns, 100Hz sampling)
 
 **Timing & Position:**
 ```
-timestamp, lap_time_sec, lap_time_str, completed_laps, current_lap,
+timestamp, lap_time_str, completed_laps, current_lap,
 distance_m, lap_fraction
 ```
 
 **Kinematics:**
 ```
-speed_kmh, speed_ms, gear,
+speed_kmh, speed_ms, gear, rpm,
 vx, vy, vz,                    # Velocity vector (m/s)
 ax, ay, az,                    # Acceleration (m/s²)
 accel_longitudinal,            # Forward/backward accel
@@ -239,7 +259,7 @@ gas_smooth, brake_smooth, steer_smooth    # Filtered inputs
 
 **Wheel Telemetry (FL, FR, RL, RR):**
 ```
-wheel_slip_*, camber_*, suspension_travel_*
+wheel_slip_*, slip_angle_*, suspension_travel_*
 ```
 
 **Other:**
@@ -249,25 +269,26 @@ fuel_kg
 
 ### ML Dataset Format
 
-**State Features (X):** 21-dimensional vector
-- Basic state (9 features):
-  speed_ms, accel_longitudinal, accel_lateral, abs_steer
-  gear, lap_fraction
-  vx, vy, vz (velocity components)
+**State Features (X): 18-dimensional vector**
 
-- Wheel dynamics (12 features):
-  wheel_slip_fl/fr/rl/rr (slip ratios)
-  camber_fl/fr/rl/rr (camber angles)
-  suspension_travel_fl/fr/rl/rr (travel distance)
+*Basic state (10 features):*
+- `speed_ms`, `accel_longitudinal`, `accel_lateral`, `abs_steer`
+- `gear`, `rpm`, `lap_fraction`
+- `vx`, `vy`, `vz` (velocity components)
 
-**Action Labels (y):** 3-dimensional vector
+*Wheel dynamics (8 features):*
+- `wheel_slip_fl/fr/rl/rr` (slip ratios)
+- `suspension_travel_fl/fr/rl/rr` (travel distance)
+
+**Action Labels (y): 3-dimensional vector**
 - `gas` [0-1], `brake` [0-1], `steer` [-1, 1]
 
-Files generated:
+**Files generated:**
 - `X_states.npy` / `X_states_normalized.npy`
 - `y_actions.npy`
 - `X_sequences.npy` (for temporal models)
 - `normalization_min/max.npy` (for inference)
+- `feature_names.txt` (documentation)
 
 ## Example Workflows
 
@@ -343,14 +364,17 @@ WHERE brake > 0.8 AND speed_kmh > 150
 2. Parse in `ACTelemetryReader.read_frame()`
 3. Add to `TelemetryFrame` dataclass
 4. Update CSV headers
+5. Update `feature_schema.py` if used for ML
 
 **Add custom features:**
-- Modify `FeatureEngineer.create_state_action_pairs()` in `telemetry_analysis.py`
+1. Modify `FeatureEngineer.create_state_action_pairs()` in `telemetry_analysis.py`
+2. Update `POLICY_FEATURES` in `feature_schema.py`
+3. Regenerate datasets with `--ml` flag
 
 **Add new models:**
-- Extend `BaselineModel` class in `ml_trainer.py`
-
-See full documentation in pipeline README for detailed extension guide.
+1. Extend `BaselineModel` class in `ml_trainer.py`
+2. Implement `train()` method
+3. Add to models list in `main()`
 
 ## Use Cases
 
@@ -367,6 +391,7 @@ ac_telemetry/
 ├── telemetry_reader.py      # Real-time data capture (100Hz)
 ├── telemetry_analysis.py    # Analytics + ML dataset prep
 ├── ml_trainer.py             # Train baseline models
+├── feature_schema.py         # Feature definitions & validation
 ├── export_file.py            # Extract data for spreadsheets
 ├── telemetry_logs/           # Captured session CSVs
 ├── ml_data/                  # ML-ready datasets (generated)
@@ -375,24 +400,29 @@ ac_telemetry/
 
 ## Requirements
 
-- **Python 3.7+**
-- **DuckDB** (SQL analytics)
-- **Plotly** (interactive visualizations)
-- **scikit-learn** (ML models, optional)
-- **matplotlib** (plotting, optional)
-- **pandas** (data export, optional)
-- **Assetto Corsa** (data source)
-- **Windows** (for shared memory access)
+- Python 3.7+
+- DuckDB (SQL analytics)
+- Plotly (interactive visualizations)
+- Pandas (data processing)
+- scikit-learn (ML models, optional)
+- matplotlib (plotting, optional)
+- joblib (model saving, optional)
+- Assetto Corsa Competizione (data source)
+- Windows (for shared memory access)
 
 ## Troubleshooting
 
-**"AC shared memory not found"**
-- Ensure Assetto Corsa is running before starting telemetry reader
+**"ACC shared memory not found"**
+- Ensure Assetto Corsa Competizione is running before starting telemetry reader
 
 **Models perform poorly (R² < 0.5)**
 - Capture more data (30+ laps minimum)
 - Ensure consistent driving style
 - Check data quality with `--plots`
+
+**"Feature count mismatch" error**
+- Regenerate ML datasets: `python telemetry_analysis.py session.csv --ml`
+- This ensures dataset matches current `feature_schema.py`
 
 **Large file sizes**
 - Use `export_file.py` to extract relevant columns
@@ -406,7 +436,7 @@ ac_telemetry/
 - [ ] Track map overlay with telemetry
 - [ ] Multi-car comparison tools
 - [ ] Cloud storage integration
-- [ ] AC plugin integration (custom apps)
+- [ ] ACC plugin integration (custom apps)
 
 ## Contributing
 
@@ -416,11 +446,10 @@ Contributions welcome! Areas of interest:
 - Track-specific model training
 - Visualization improvements
 
----
-
-**Built to practice data engineering, analytics, and ML skills while racing. A small tool that helps maintain consistency and actively apply technical concepts instead of just reading them.** 🏁
-
 ## License
 
 MIT License - Free to use, modify, and distribute.
 
+---
+
+Built to practice data engineering, analytics, and ML skills while racing. A small tool that helps maintain consistency and actively apply technical concepts instead of just reading them. 🏁
