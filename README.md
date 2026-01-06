@@ -59,7 +59,7 @@ Comprehensive analysis using DuckDB SQL queries:
 **Why It Matters:**
 Without a centralized schema, it's easy to introduce bugs where training uses features in one order but inference expects a different order. This file eliminates that entire class of errors by making feature order explicit and validated.
 
-### 🤖 ML Training (`ml_trainer.py`)
+### 🤖 ML Training (`mlp_trainer.py`)
 Train baseline models to predict driver inputs from vehicle state:
 
 **Models:**
