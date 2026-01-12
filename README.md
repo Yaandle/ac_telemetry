@@ -2,6 +2,96 @@
 
 A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
 
+## Execution Framework (Fibonacci Ladder)
+
+This project is developed using a **Fibonacci Ladder execution framework**, designed to prioritise completion, iteration, and system-building over novelty.
+
+Each stage represents a shift in **how** the work is approached, not just **what** is built.
+
+---
+
+### Current Position
+
+- **Primary Stage:** 2 — Repetition + Variation  
+- **Partial Stage:** 3 — System Formation *(in progress)*
+
+Most functionality satisfies **Stage 2** goals, with intentional early contributions to **Stage 3** to reduce future refactors.
+
+---
+
+### Stage 1 — Foundational Win ✅
+
+**Goal:** Finish something small, real, and runnable.
+
+- Single language (Python)
+- Single toolchain
+- Real input → real output
+- Fully working and documented
+
+**Outcome:**  
+`telemetry_reader.py` captures live ACC telemetry at **100 Hz** and logs structured CSV data.
+
+---
+
+### Stage 2 — Repetition + Variation ✅
+
+**Goal:** Build the same thing twice with small, meaningful variation.
+
+- Reuse ≥70% of code
+- Change one dimension at a time
+- Learn what matters vs. what doesn’t
+
+**Outcome:**
+- Terminal-based analytics
+- CSV / SQL-driven analytics
+- Visualization + ML dataset preparation from the same raw data
+
+This stage reinforces **iteration over novelty**.
+
+---
+
+### Stage 3 — System Formation *(Partial / Ongoing)* 🧩
+
+**Goal:** Turn working scripts into a coherent, reusable system.
+
+This repository intentionally includes early Stage 3 elements, even while Stage 2 work continues.
+
+**Stage 3 characteristics already present:**
+- Modular file structure (capture, analysis, ML, export)
+- Clear input/output boundaries
+- Feature schema as a single source of truth
+- Validation layers to prevent silent errors
+- Reproducible workflows
+
+**Repo is understandable in:**
+- ~1 minute (README)
+- ~10 minutes (code)
+
+**What is *not* claimed yet:**
+- Full production hardening
+- Long-term API stability
+- Performance optimisation beyond correctness
+
+This keeps the system usable **without overengineering**.
+
+---
+
+### Stage 4 — Speed + Experimentation *(Planned)* ⚡
+
+**Goal:** Rapid, controlled experiments with minimal emotional attachment.
+
+**Planned focus:**
+- Linear Regression (baseline)
+- MLP architecture sweeps
+- Genetic Algorithms
+- Deep Q-Learning
+
+**Each experiment:**
+- Changes one variable
+- Logs results
+- Compares against baselines
+
+
 ## What It Does
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
