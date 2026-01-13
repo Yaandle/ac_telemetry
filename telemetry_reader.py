@@ -446,7 +446,6 @@ def get_csv_headers():
         "gas_smooth", "brake_smooth", "steer_smooth",
         "distance_m", "lap_fraction",
         "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
-        "slip_angle_fl", "slip_angle_fr", "slip_angle_rl", "slip_angle_rr",
         "suspension_travel_fl", "suspension_travel_fr", "suspension_travel_rl", "suspension_travel_rr",
         "fuel_kg"
     ]
@@ -478,8 +477,6 @@ def frame_to_csv_row(frame: TelemetryFrame):
         f"{frame.lap_fraction:.4f}",
         f"{frame.wheel_slip_fl:.4f}", f"{frame.wheel_slip_fr:.4f}",
         f"{frame.wheel_slip_rl:.4f}", f"{frame.wheel_slip_rr:.4f}",
-        f"{frame.slip_angle_fl:.4f}", f"{frame.slip_angle_fr:.4f}",
-        f"{frame.slip_angle_rl:.4f}", f"{frame.slip_angle_rr:.4f}",
         f"{frame.suspension_travel_fl:.4f}", f"{frame.suspension_travel_fr:.4f}",  
         f"{frame.suspension_travel_rl:.4f}", f"{frame.suspension_travel_rr:.4f}",
         f"{frame.fuel_kg:.2f}"
@@ -526,7 +523,7 @@ def main():
         print("✓ Connected!")
         print(f"⚙️  Sampling at {SAMPLING_HZ} Hz")
         print(f"🔧 Smoothing window: {SMOOTHING_WINDOW} samples")
-        print(f"📊 Capturing: 38 channels")
+        print(f"📊 Capturing: {len(get_csv_headers())} channels")
         print("\n🟢 Recording... (Ctrl+C to stop)\n")
         
         with open(csv_path, "w", newline="") as csv_file:
