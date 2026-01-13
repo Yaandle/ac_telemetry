@@ -126,12 +126,6 @@ class TelemetryFrame:
     wheel_slip_fr: float
     wheel_slip_rl: float
     wheel_slip_rr: float
-    
-    slip_angle_fl: float   # radians
-    slip_angle_fr: float
-    slip_angle_rl: float
-    slip_angle_rr: float
-
     suspension_travel_fl: float  # meters
     suspension_travel_fr: float  # meters
     suspension_travel_rl: float  # meters
@@ -327,8 +321,6 @@ class ACTelemetryReader:
             
             # Parse wheel slip (4 wheels: FL, FR, RL, RR)
             wheel_slip = read_float_array(WHEEL_SLIP_OFFSET)
-            # Parse slip angles (4 wheels: FL, FR, RL, RR) - in radians
-            slip_angle = read_float_array(SLIP_ANGLE_OFFSET)
 
             # Parse suspension travel (4 wheels: FL, FR, RL, RR) - in meters
             suspension_travel = [
@@ -390,10 +382,6 @@ class ACTelemetryReader:
                 wheel_slip_fr=wheel_slip[1],
                 wheel_slip_rl=wheel_slip[2],
                 wheel_slip_rr=wheel_slip[3],
-                slip_angle_fl=slip_angle[0],
-                slip_angle_fr=slip_angle[1],
-                slip_angle_rl=slip_angle[2],
-                slip_angle_rr=slip_angle[3],
                 suspension_travel_fl=suspension_travel[0],
                 suspension_travel_fr=suspension_travel[1],
                 suspension_travel_rl=suspension_travel[2],
