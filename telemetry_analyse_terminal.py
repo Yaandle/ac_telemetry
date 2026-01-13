@@ -77,9 +77,9 @@ class FeatureEngineer:
         """
         df = pd.read_csv(csv_path)
         
-        # STATE FEATURES (18 total)
+        # STATE FEATURES (17 total - no action-derived signals)
         state_cols = [
-            'speed_ms', 'accel_longitudinal', 'accel_lateral', 'abs_steer',
+            'speed_ms', 'accel_longitudinal', 'accel_lateral',
             'gear', 'rpm', 'lap_fraction', 'vx', 'vy', 'vz',
             'wheel_slip_fl', 'wheel_slip_fr', 'wheel_slip_rl', 'wheel_slip_rr',
             'suspension_travel_fl', 'suspension_travel_fr',
@@ -542,7 +542,7 @@ def prepare_ml_dataset(csv_path: Path, output_dir: Path = Path("ml_data")):
     
     # Feature descriptions
     feature_names = [
-        "speed_ms", "accel_longitudinal", "accel_lateral", "abs_steer",
+        "speed_ms", "accel_longitudinal", "accel_lateral",
         "gear", 'rpm', "lap_fraction", "vx", "vy", "vz",
         "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
         "suspension_travel_fl", "suspension_travel_fr", 
