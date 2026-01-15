@@ -11,11 +11,9 @@ Each stage represents a shift in **how** the work is approached, not just **what
 ---
 
 ### Current Position
-
-- **Primary Stage:** 2 — Repetition + Variation  
 - **Partial Stage:** 3 — System Formation *(in progress)*
+- **Partial Stage:** 4 - Speed + Experimentation *(in progress)*
 
-Most functionality satisfies **Stage 2** goals, with intentional early contributions to **Stage 3** to reduce future refactors.
 
 ---
 
@@ -50,7 +48,7 @@ This stage reinforces **iteration over novelty**.
 
 ---
 
-### Stage 3 — System Formation *(Partial / Ongoing)* 🧩
+### Stage 3 — System Formation 🧩
 
 **Goal:** Turn working scripts into a coherent, reusable system.
 
@@ -76,13 +74,13 @@ This keeps the system usable **without overengineering**.
 
 ---
 
-### Stage 4 — Speed + Experimentation *(Planned)* ⚡
+### Stage 4 — Speed + Experimentation *(Current)* ⚡
 
 **Goal:** Rapid, controlled experiments with minimal emotional attachment.
 
 **Planned focus:**
 - Linear Regression (baseline)
-- MLP architecture sweeps
+- MLP architecture 
 - Genetic Algorithms
 - Deep Q-Learning
 
