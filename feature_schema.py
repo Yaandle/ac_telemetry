@@ -59,7 +59,6 @@ AVAILABLE_FIELDS = {
         "speedKmh", "velocity_vx", "velocity_vy", "velocity_vz",
         "accG_ax", "accG_ay", "accG_az",
         "wheelSlip_fl", "wheelSlip_fr", "wheelSlip_rl", "wheelSlip_rr",
-        "wheelLoad_fl", "wheelLoad_fr", "wheelLoad_rl", "wheelLoad_rr",
         "wheelPressure_fl", "wheelPressure_fr", "wheelPressure_rl", "wheelPressure_rr",
         "wheelAngularSpeed_fl", "wheelAngularSpeed_fr", "wheelAngularSpeed_rl", "wheelAngularSpeed_rr",
         "tyreWear_fl", "tyreWear_fr", "tyreWear_rl", "tyreWear_rr",
