@@ -12,7 +12,6 @@
     "velocity": {"vx": "float", "vy": "float", "vz": "float"},
     "accG": {"ax": "float", "ay": "float", "az": "float"},
     "wheelSlip": {"frontLeft": "float", "frontRight": "float", "rearLeft": "float", "rearRight": "float"},
-    "wheelLoad": {"frontLeft": "float", "frontRight": "float", "rearLeft": "float", "rearRight": "float"},
     "wheelPressure": {"frontLeft": "float", "frontRight": "float", "rearLeft": "float", "rearRight": "float"},
     "wheelAngularSpeed": {"frontLeft": "float", "frontRight": "float", "rearLeft": "float", "rearRight": "float"},
     "tyreWear": {"frontLeft": "float", "frontRight": "float", "rearLeft": "float", "rearRight": "float"},
