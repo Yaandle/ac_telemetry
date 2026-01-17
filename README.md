@@ -76,7 +76,7 @@ This keeps the system usable **without overengineering**.
 
 ### Stage 4 — Speed + Experimentation *(Current)* ⚡
 
-**Goal:** Rapid, controlled experiments with minimal emotional attachment.
+**Goal:** Run many small, controlled experiments quickly to test ideas against reality.
 
 **Planned focus:**
 - Linear Regression (baseline)
@@ -169,6 +169,21 @@ Train baseline models to predict driver inputs from vehicle state:
 
 ### 📦 Export Tools (`export_file.py`)
 Efficiently extract specific columns and rows from large CSV files for spreadsheet analysis without importing entire datasets.
+
+### 🎮 Driver File ('driver.py')
+Executes trained or evolving policies in the driving environment and evaluates task-level performance under a fixed interface.
+
+driver.py is the single execution surface for all learning paradigms.
+Role in the System:
+- Consumes a vehicle state vector (from telemetry or simulator)
+- Applies a policy (MLP, GA genome, DQL policy)
+- Outputs control actions:
+    - Steering
+    - Throttle
+    - Brake
+
+Computes task completion metrics at episode end
+
 
 ## Why This Pipeline?
 
