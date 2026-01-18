@@ -74,9 +74,11 @@ This keeps the system usable **without overengineering**.
 
 ---
 
-### Stage 4 — Speed + Experimentation *(Current)* ⚡
+### Stage 4-5 — Speed + Experimentation *(Current)* ⚡
 
 **Goal:** Run many small, controlled experiments quickly to test ideas against reality.
+
+Testing multiple learning paradigms against the same task to understand how definitions of learning shape behaviour
 
 **Planned focus:**
 - Linear Regression (baseline)
@@ -89,8 +91,13 @@ This keeps the system usable **without overengineering**.
 - Logs results
 - Compares against baselines
 
+MLP: Hidden Width (Does more capacity help?), (Does it overfit instantly?
+GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it?
+DQL: Reward Weight (Does reward shaping dominate?), (When does it collapse?)
 
-## What It Does
+
+
+## What The System Does (Files)
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
 Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
