@@ -34,6 +34,9 @@ Each stage represents a shift in **how** the work is approached, not just **what
 ### Stage 2 — Repetition + Variation ✅
 
 **Goal:** Build the same thing twice with small, meaningful variation.
+Stage 2 consists of two parallel analytics implementations, both built directly on top of the same telemetry reader output and shared analysis logic.
+- telemetry_analyse_streamlit.py
+- telemetry_analyse_terminal.py
 
 - Reuse ≥70% of code
 - Change one dimension at a time
@@ -53,13 +56,14 @@ This stage reinforces **iteration over novelty**.
 **Goal:** Turn working scripts into a coherent, reusable system.
 
 This repository intentionally includes early Stage 3 elements, even while Stage 2 work continues.
-
+It introduces the 'feature_schema.py' file.
 **Stage 3 characteristics already present:**
 - Modular file structure (capture, analysis, ML, export)
 - Clear input/output boundaries
 - Feature schema as a single source of truth
 - Validation layers to prevent silent errors
 - Reproducible workflows
+
 
 **Repo is understandable in:**
 - ~1 minute (README)
@@ -96,7 +100,6 @@ GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it
 DQL: Reward Weight (Does reward shaping dominate?), (When does it collapse?)
 
 
-
 ## What The System Does (Files)
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
@@ -115,24 +118,23 @@ Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 
 **Output:** Timestamped CSV logs with 38 telemetry channels
 
-### 📊 Analytics Pipeline (`telemetry_analysis.py`)
-Comprehensive analysis using DuckDB SQL queries:
+### 📊 Analytics (telemetry_analyse_terminal.py / telemetry_analyse_streamlit.py)
+Comprehensive analytics tools for ACC telemetry:
 
-**Session Analytics:**
-- Session summaries: Max/avg speeds, G-forces, total distance
-- Lap-by-lap statistics: Performance breakdown per lap
-- Input distributions: Throttle/brake/steering usage patterns
-- Wheel telemetry: Slip, slip angles, and suspension travel analysis
+**Core Capabilities:**
+Session summaries: Max/avg speeds, lap breakdowns, G-forces
+Input distributions: Throttle, brake, steering usage patterns
+Wheel telemetry: Slip, slip angles, suspension travel analysis
+ML dataset preparation: State-action pairs, normalized datasets, temporal sequences
 
-**Visualizations:**
-- Interactive HTML plots: Speed traces, control inputs, G-G diagrams
-- Export-ready data: Cleaned datasets for further analysis
+**Differences:**
+telemetry_analyse_terminal.py – CLI-first, textual summaries, fast iteration
+telemetry_analyse_streamlit.py – Web-based, interactive charts and sliders
 
-**ML Dataset Preparation:**
-- State-action pairs: (18 features) → (3 control outputs)
-- Temporal sequences: For LSTM/RNN models
-- Normalized datasets: Ready for training
-- Feature documentation: Complete schema reference
+**Shared Foundation:**
+Both use feature_schema.py for consistent feature definitions
+Both consume CSV data produced by telemetry_reader.py
+Differences limited to interface and visualization
 
 ### 🧩 Feature Schema (`feature_schema.py`)
 **Single source of truth** for ML feature definitions:
@@ -160,19 +162,23 @@ Train baseline models to predict driver inputs from vehicle state:
 **Models:**
 - Linear Regression (simple baseline)
 - MLP (Multi-Layer Perceptron) with various architectures
-- Extensible framework for custom models
+- Extensible for GA or DQL policies in future experiments
 
 **Evaluation:**
 - Per-action metrics: RMSE and R² for gas, brake, steering
-- Prediction visualizations: Overlay plots comparing actual vs predicted
-- Model comparison: Automated benchmarking
+- Overlay plots comparing actual vs predicted
+- Automated model benchmarking and comparison
 
-**Output:** Trained models, performance reports, visualization plots
+**Output:**
+- Trained models (Linear, MLP, etc.)
+- Performance metrics and plots
+- Normalized datasets for inference
+- Training reports documenting model performance
 
 **Feature Validation:**
-- Automatically validates feature count matches schema
-- Checks normalization arrays for consistency
-- Prevents training with mismatched data
+- Checks feature count matches schema
+- Validates normalization arrays
+- Prevents training with mismatched or corrupted datasets
 
 ### 📦 Export Tools (`export_file.py`)
 Efficiently extract specific columns and rows from large CSV files for spreadsheet analysis without importing entire datasets.
