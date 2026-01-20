@@ -15,6 +15,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from collections import deque
 from typing import Optional
+from statistics import median
 
 # ============================================================================
 # SHARED MEMORY CONFIGURATION - ACC v1.8.12
@@ -58,7 +59,6 @@ SPEED_OFFSET = 28
 VELOCITY_OFFSET = 32        # 3x Float - velocity[3]
 ACCEL_OFFSET = 44           # 3x Float - accG[3]
 WHEEL_SLIP_OFFSET = 56      # 4x Float - wheelSlip[4]
-SLIP_ANGLE_OFFSET = 72
 SUSPENSION_TRAVEL_OFFSET = 184  # 4x Float - suspensionTravel[4]
 
 # Graphics Memory Offsets
@@ -92,17 +92,13 @@ class TelemetryFrame:
     speed_ms: float
     gear: int
     rpm: int
-
     
-    # Velocity & Acceleration (m/s, G-forces)
+    # Velocity (m/s)
     vx: float
     vy: float
     vz: float
-    ax: float  
-    ay: float  
-    az: float  
     
-    # Derived kinematics
+    # Derived kinematics (m/s²)
     accel_longitudinal: float  
     accel_lateral: float       
     
@@ -110,14 +106,8 @@ class TelemetryFrame:
     gas: float
     brake: float
     steer: float
-    abs_steer: float
     
-    # Smoothed controls
-    gas_smooth: float
-    brake_smooth: float
-    steer_smooth: float
-    
-    # Position & Distance
+    # Position & Distance (for debugging/telemetry)
     distance_m: float
     lap_fraction: float
     
@@ -126,12 +116,13 @@ class TelemetryFrame:
     wheel_slip_fr: float
     wheel_slip_rl: float
     wheel_slip_rr: float
+    wheel_slip_valid: bool
     suspension_travel_fl: float  # meters
     suspension_travel_fr: float  # meters
     suspension_travel_rl: float  # meters
     suspension_travel_rr: float  # meters
     
-    # Additional
+    # Additional (for debugging/telemetry)
     fuel_kg: float
 
 class SmoothingFilter:
@@ -152,6 +143,44 @@ class SmoothingFilter:
             sum(self.brake_buffer) / len(self.brake_buffer),
             sum(self.steer_buffer) / len(self.steer_buffer)
         )
+
+
+class WheelSlipFilter:
+    """Median-based per-wheel filter with masking and capping."""
+    def __init__(self, window: int = 3, speed_threshold_kmh: float = 2.0, cap: float = 3.0):
+        self.window = window
+        self.deques = {w: deque(maxlen=window) for w in ('fl','fr','rl','rr')}
+        self.speed_threshold_kmh = speed_threshold_kmh
+        self.cap = cap
+
+    def update(self, raw_slips, speed_kmh):
+        # If speed is below threshold, return zeros and invalid flag
+        if speed_kmh is None or speed_kmh < self.speed_threshold_kmh:
+            # still append to history to avoid sudden jumps on restart
+            for i, w in enumerate(('fl','fr','rl','rr')):
+                try:
+                    self.deques[w].append(float(raw_slips[i]))
+                except Exception:
+                    self.deques[w].append(0.0)
+            return [0.0, 0.0, 0.0, 0.0], False
+
+        out = []
+        valid = True
+        for i, w in enumerate(('fl','fr','rl','rr')):
+            try:
+                val = float(raw_slips[i])
+            except Exception:
+                val = 0.0
+            self.deques[w].append(val)
+            med = float(median(self.deques[w]))
+            if med > self.cap:
+                valid = False
+                med = self.cap
+            # enforce non-negative
+            med = max(0.0, med)
+            out.append(med)
+
+        return out, valid
 
 class DistanceTracker:
     """Track distance traveled via trapezoidal integration"""
@@ -221,7 +250,7 @@ class SessionTracker:
         self.max_speed = max(self.max_speed, frame.speed_kmh)
         self.max_gas = max(self.max_gas, frame.gas)
         self.max_brake = max(self.max_brake, frame.brake)
-        self.max_steer = max(self.max_steer, frame.abs_steer)
+        self.max_steer = max(self.max_steer, abs(frame.steer))
         self.max_accel_long = max(self.max_accel_long, abs(frame.accel_longitudinal))
         self.max_accel_lat = max(self.max_accel_lat, abs(frame.accel_lateral))
         self.max_rpm = max(self.max_rpm, frame.rpm)
@@ -259,6 +288,7 @@ class ACTelemetryReader:
         self.physics_shm: Optional[mmap.mmap] = None
         self.graphics_shm: Optional[mmap.mmap] = None
         self.smoother = SmoothingFilter(window_size=SMOOTHING_WINDOW)
+        self.wheel_slip_filter = WheelSlipFilter(window=3, speed_threshold_kmh=2.0, cap=3.0)
         self.distance_tracker = DistanceTracker()
         self.session = SessionTracker()
         
@@ -306,9 +336,9 @@ class ACTelemetryReader:
             vx = struct.unpack('<f', physics_data[VELOCITY_OFFSET:VELOCITY_OFFSET+4])[0]
             vy = struct.unpack('<f', physics_data[VELOCITY_OFFSET+4:VELOCITY_OFFSET+8])[0]
             vz = struct.unpack('<f', physics_data[VELOCITY_OFFSET+8:VELOCITY_OFFSET+12])[0]
-            # Parse acceleration
+            
+            # Parse acceleration (raw G-forces)
             ax = struct.unpack('<f', physics_data[ACCEL_OFFSET:ACCEL_OFFSET+4])[0]
-            ay = struct.unpack('<f', physics_data[ACCEL_OFFSET+4:ACCEL_OFFSET+8])[0]
             az = struct.unpack('<f', physics_data[ACCEL_OFFSET+8:ACCEL_OFFSET+12])[0]
             
             # Derive longitudinal/lateral (these are in m/s²)
@@ -319,8 +349,8 @@ class ACTelemetryReader:
                 return [struct.unpack('<f', physics_data[offset + i*4:offset + i*4 + 4])[0] 
                        for i in range(count)]
             
-            # Parse wheel slip (4 wheels: FL, FR, RL, RR)
-            wheel_slip = read_float_array(WHEEL_SLIP_OFFSET)
+            # Parse wheel slip (4 wheels: FL, FR, RL, RR) - raw readings
+            wheel_slip_raw = read_float_array(WHEEL_SLIP_OFFSET)
 
             # Parse suspension travel (4 wheels: FL, FR, RL, RR) - in meters
             suspension_travel = [
@@ -346,16 +376,15 @@ class ACTelemetryReader:
             speed_ms = np.clip(speed_ms, 0, 111.1)  # 400 km/h in m/s
             rpm = np.clip(rpm, 0, 12000)
             gear_display = np.clip(gear_display, 0, 8)
-
-            
-            # Smooth controls
-            gas_smooth, brake_smooth, steer_smooth = self.smoother.update(gas, brake, steer)
             
             # Distance and lap fraction
             distance = self.distance_tracker.update(speed_ms, elapsed)
             lap_fraction = self.distance_tracker.get_lap_fraction()
             
-            # Build frame with ALL required fields
+            # Process wheel slip: mask at low speed, median-smooth, cap outliers
+            wheel_slip_processed, wheel_slip_valid = self.wheel_slip_filter.update(wheel_slip_raw, speed_kmh)
+
+            # Build frame with streamlined fields
             frame = TelemetryFrame(
                 timestamp=elapsed,
                 lap_time_str=lap_time_str,
@@ -366,22 +395,18 @@ class ACTelemetryReader:
                 gear=gear_display,
                 rpm=rpm,
                 vx=vx, vy=vy, vz=vz,
-                ax=ax, ay=ay, az=az,
                 accel_longitudinal=accel_longitudinal,
                 accel_lateral=accel_lateral,
                 gas=gas,
                 brake=brake,
                 steer=steer,
-                abs_steer=abs(steer),
-                gas_smooth=gas_smooth,
-                brake_smooth=brake_smooth,
-                steer_smooth=steer_smooth,
                 distance_m=distance,
                 lap_fraction=lap_fraction,
-                wheel_slip_fl=wheel_slip[0],
-                wheel_slip_fr=wheel_slip[1],
-                wheel_slip_rl=wheel_slip[2],
-                wheel_slip_rr=wheel_slip[3],
+                wheel_slip_fl=wheel_slip_processed[0],
+                wheel_slip_fr=wheel_slip_processed[1],
+                wheel_slip_rl=wheel_slip_processed[2],
+                wheel_slip_rr=wheel_slip_processed[3],
+                wheel_slip_valid=wheel_slip_valid,
                 suspension_travel_fl=suspension_travel[0],
                 suspension_travel_fr=suspension_travel[1],
                 suspension_travel_rl=suspension_travel[2],
@@ -393,11 +418,6 @@ class ACTelemetryReader:
             lap_changed = self.session.update(frame)
             if lap_changed:
                 self.distance_tracker.mark_lap_complete()
-
-            # Clamp extreme values to prevent telemetry glitches
-            speed_kmh = np.clip(speed_kmh, 0, 400)
-            rpm = np.clip(rpm, 0, 12000)
-            gear_display = np.clip(gear_display, 0, 7)  
 
             return frame
             
@@ -424,16 +444,16 @@ def create_log_file() -> Path:
     return logs_dir / f"acc_session_{timestamp}.csv"
 
 def get_csv_headers():
-    """Return CSV column headers - ALL 38 columns"""
+    """Return CSV column headers - streamlined set"""
     return [
         "timestamp", "lap_time_str", "completed_laps", "current_lap",
         "speed_kmh", "speed_ms", "gear", "rpm",
-        "vx", "vy", "vz", "ax", "ay", "az",
+        "vx", "vy", "vz",
         "accel_longitudinal", "accel_lateral",
-        "gas", "brake", "steer", "abs_steer",
-        "gas_smooth", "brake_smooth", "steer_smooth",
+        "gas", "brake", "steer",
         "distance_m", "lap_fraction",
         "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
+        "wheel_slip_valid",
         "suspension_travel_fl", "suspension_travel_fr", "suspension_travel_rl", "suspension_travel_rr",
         "fuel_kg"
     ]
@@ -451,20 +471,16 @@ def frame_to_csv_row(frame: TelemetryFrame):
         frame.gear,
         frame.rpm,
         f"{frame.vx:.3f}", f"{frame.vy:.3f}", f"{frame.vz:.3f}",
-        f"{frame.ax:.3f}", f"{frame.ay:.3f}", f"{frame.az:.3f}", 
         f"{frame.accel_longitudinal:.3f}",
         f"{frame.accel_lateral:.3f}",
         f"{frame.gas:.4f}",
         f"{frame.brake:.4f}",
         f"{frame.steer:.4f}",
-        f"{frame.abs_steer:.4f}",
-        f"{frame.gas_smooth:.4f}",
-        f"{frame.brake_smooth:.4f}",
-        f"{frame.steer_smooth:.4f}",
         f"{frame.distance_m:.2f}",
         f"{frame.lap_fraction:.4f}",
         f"{frame.wheel_slip_fl:.4f}", f"{frame.wheel_slip_fr:.4f}",
         f"{frame.wheel_slip_rl:.4f}", f"{frame.wheel_slip_rr:.4f}",
+        int(frame.wheel_slip_valid),
         f"{frame.suspension_travel_fl:.4f}", f"{frame.suspension_travel_fr:.4f}",  
         f"{frame.suspension_travel_rl:.4f}", f"{frame.suspension_travel_rr:.4f}",
         f"{frame.fuel_kg:.2f}"
