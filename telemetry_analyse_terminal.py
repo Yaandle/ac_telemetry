@@ -152,6 +152,134 @@ class FeatureEngineer:
         
         return X_normalized, min_vals, max_vals
 
+    @staticmethod
+    def create_episodes(csv_path: Path, downsample: int = 1):
+        """
+        Create episode-based datasets for Genetic Algorithm training
+        
+        Returns:
+            episodes_states: List of state arrays, one per lap
+            episodes_actions: List of action arrays, one per lap
+            episode_lengths: Array of episode lengths
+        """
+        df = pd.read_csv(csv_path)
+        
+        state_cols = [
+            'speed_ms', 'accel_longitudinal', 'accel_lateral',
+            'gear', 'rpm', 'lap_fraction', 'vx', 'vy', 'vz',
+            'wheel_slip_fl', 'wheel_slip_fr', 'wheel_slip_rl', 'wheel_slip_rr',
+            'suspension_travel_fl', 'suspension_travel_fr',
+            'suspension_travel_rl', 'suspension_travel_rr'
+        ]
+        action_cols = ['gas', 'brake', 'steer']
+        
+        episodes_states = []
+        episodes_actions = []
+        episode_lengths = []
+        
+        # Group by lap (current_lap column)
+        for lap_num in df['current_lap'].unique():
+            lap_data = df[df['current_lap'] == lap_num]
+            
+            # Extract states and actions for this lap
+            states = lap_data[state_cols].values[::downsample]
+            actions = lap_data[action_cols].values[::downsample]
+            
+            # Remove NaN/inf
+            mask = np.isfinite(states).all(axis=1) & np.isfinite(actions).all(axis=1)
+            states = states[mask]
+            actions = actions[mask]
+            
+            if len(states) > 10:  # Only include laps with sufficient data
+                episodes_states.append(states)
+                episodes_actions.append(actions)
+                episode_lengths.append(len(states))
+        
+        return episodes_states, episodes_actions, np.array(episode_lengths)
+    
+    @staticmethod
+    def create_dql_transitions(csv_path: Path, downsample: int = 1, gamma: float = 0.99):
+        """
+        Create DQL transition tuples: (state, action, reward, next_state, done)
+        
+        Reward is based on:
+        - Lap progress (primary signal)
+        - Speed maintenance
+        - Smoothness penalties for excessive inputs
+        
+        Returns:
+            transitions: Array of shape (N, state_dim + action_dim + 1 + state_dim + 1)
+                        [state, action, reward, next_state, done]
+        """
+        df = pd.read_csv(csv_path)
+        
+        state_cols = [
+            'speed_ms', 'accel_longitudinal', 'accel_lateral',
+            'gear', 'rpm', 'lap_fraction', 'vx', 'vy', 'vz',
+            'wheel_slip_fl', 'wheel_slip_fr', 'wheel_slip_rl', 'wheel_slip_rr',
+            'suspension_travel_fl', 'suspension_travel_fr',
+            'suspension_travel_rl', 'suspension_travel_rr'
+        ]
+        action_cols = ['gas', 'brake', 'steer']
+        
+        # Extract full trajectory
+        states = df[state_cols].values[::downsample]
+        actions = df[action_cols].values[::downsample]
+        lap_fractions = df['lap_fraction'].values[::downsample]
+        current_laps = df['current_lap'].values[::downsample]
+        speed = df['speed_ms'].values[::downsample]
+        
+        # Remove NaN/inf
+        mask = np.isfinite(states).all(axis=1) & np.isfinite(actions).all(axis=1)
+        states = states[mask]
+        actions = actions[mask]
+        lap_fractions = lap_fractions[mask]
+        current_laps = current_laps[mask]
+        speed = speed[mask]
+        
+        transitions = []
+        
+        for i in range(len(states) - 1):
+            state = states[i]
+            action = actions[i]
+            next_state = states[i + 1]
+            
+            # Compute reward
+            # 1. Progress reward: increase in lap_fraction
+            progress = lap_fractions[i + 1] - lap_fractions[i]
+            
+            # Handle lap completion (fraction wraps from ~1.0 to 0.0)
+            if current_laps[i + 1] > current_laps[i]:
+                progress = (1.0 - lap_fractions[i]) + lap_fractions[i + 1]
+                done = True
+            else:
+                done = False
+            
+            # 2. Speed reward: encourage maintaining high speed
+            speed_reward = speed[i] / 100.0  # Normalize to ~[0, 1] range
+            
+            # 3. Smoothness penalty: penalize excessive control changes
+            if i > 0:
+                action_change = np.abs(actions[i] - actions[i - 1]).sum()
+                smoothness_penalty = -0.01 * action_change
+            else:
+                smoothness_penalty = 0.0
+            
+            # Combined reward
+            reward = progress + 0.1 * speed_reward + smoothness_penalty
+            
+            # Store transition: [state (17), action (3), reward (1), next_state (17), done (1)]
+            transition = np.concatenate([
+                state,           # 17 features
+                action,          # 3 actions
+                [reward],        # 1 scalar
+                next_state,      # 17 features
+                [float(done)]    # 1 boolean (0 or 1)
+            ])
+            
+            transitions.append(transition)
+        
+        return np.array(transitions)
 
 # ============================================================================
 # SESSION ANALYTICS
@@ -176,8 +304,8 @@ def analyze_session_summary(csv_path: Path):
         ROUND(MAX(distance_m) / 1000, 2) as total_distance_km,
         ROUND(MAX(gas), 3) as max_throttle,
         ROUND(MAX(brake), 3) as max_brake,
-        ROUND(AVG(abs_steer), 4) as avg_abs_steer,
-        ROUND(MAX(abs_steer), 4) as max_abs_steer,
+        ROUND(AVG(ABS(steer)), 4) as avg_abs_steer,
+        ROUND(MAX(ABS(steer)), 4) as max_abs_steer,
         ROUND(MAX(ABS(accel_longitudinal)) / 9.81, 2) as max_accel_g_long,
         ROUND(MAX(ABS(accel_lateral)) / 9.81, 2) as max_accel_g_lat
     FROM telemetry_data
@@ -217,7 +345,7 @@ def analyze_lap_summary(csv_path: Path):
         ROUND(AVG(CASE WHEN speed_kmh > 5 THEN speed_kmh END), 1) as avg_speed,
         ROUND(AVG(gas) * 100, 1) as avg_throttle,
         ROUND(AVG(brake) * 100, 1) as avg_brake,
-        ROUND(AVG(abs_steer) * 100, 2) as avg_steer,
+        ROUND(AVG(ABS(steer)) * 100, 2) as avg_steer,
         ROUND(MAX(timestamp) - MIN(timestamp), 3) as lap_duration
     FROM telemetry_data
     GROUP BY current_lap
@@ -491,37 +619,70 @@ def plot_acceleration_analysis(csv_path: Path, output_file: str = "acceleration.
 # ============================================================================
 
 def prepare_ml_dataset(csv_path: Path, output_dir: Path = Path("ml_data")):
-    """Prepare and save ML-ready datasets"""
+    """Prepare and save ML-ready datasets for all training methods"""
     print("\n" + "="*70)
     print("🤖 ML DATASET PREPARATION")
     print("="*70)
     
     output_dir.mkdir(exist_ok=True)
     
-    # Frame-by-frame dataset
-    print("\n📊 Creating frame-by-frame dataset...")
+    # Verify feature schema
+    feature_names = [
+        "speed_ms", "accel_longitudinal", "accel_lateral",
+        "gear", "rpm", "lap_fraction", "vx", "vy", "vz",
+        "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
+        "suspension_travel_fl", "suspension_travel_fr", 
+        "suspension_travel_rl", "suspension_travel_rr"
+    ]
+    action_names = ["gas", "brake", "steer"]
+    
+    print(f"\n✓ State features: {len(feature_names)} dimensions")
+    print(f"✓ Action outputs: {len(action_names)} dimensions")
+    
+    dataset_summary = {}
+    
+    # ========================================================================
+    # 1. FRAME-BY-FRAME DATASET (for Linear Regression, MLP)
+    # ========================================================================
+    print("\n" + "─"*70)
+    print("📊 [1/4] Creating frame-by-frame dataset (LR/MLP)...")
+    print("─"*70)
+    
     X, y = FeatureEngineer.create_state_action_pairs(csv_path, downsample=1)
     
     if len(X) > 0:
-        print(f"  State features (X): {X.shape}")
-        print(f"  Action labels (y): {y.shape}")
+        print(f"  Raw states (X): {X.shape}")
+        print(f"  Raw actions (y): {y.shape}")
         
+        # Normalize features
         X_norm, min_vals, max_vals = FeatureEngineer.normalize_features(X)
         
+        # Save raw data
         np.save(output_dir / "X_states.npy", X)
         np.save(output_dir / "y_actions.npy", y)
+        
+        # Save normalized data
         np.save(output_dir / "X_states_normalized.npy", X_norm)
         np.save(output_dir / "normalization_min.npy", min_vals)
         np.save(output_dir / "normalization_max.npy", max_vals)
         
-        print(f"  ✅ Saved to {output_dir}/")
-        print(f"     - X_states.npy (raw features)")
-        print(f"     - X_states_normalized.npy (normalized)")
-        print(f"     - y_actions.npy (gas, brake, steer)")
-        print(f"     - normalization_min/max.npy (for inference)")
+        dataset_summary['frame_by_frame'] = {
+            'states_shape': X.shape,
+            'actions_shape': y.shape,
+            'files': ['X_states.npy', 'y_actions.npy', 'X_states_normalized.npy']
+        }
+        
+        print(f"  ✅ Saved frame-by-frame datasets")
+    else:
+        print(f"  ⚠️  No valid data found")
     
-    # Sequence dataset
-    print("\n🔁 Creating sequence dataset (for LSTM/RNN)...")
+    # ========================================================================
+    # 2. SEQUENCE DATASET (for LSTM/RNN - future use)
+    # ========================================================================
+    print("\n" + "─"*70)
+    print("📊 [2/4] Creating sequence dataset (LSTM/RNN)...")
+    print("─"*70)
+    
     X_seq, y_seq = FeatureEngineer.create_sequences(
         csv_path,
         sequence_length=SEQUENCE_LENGTH,
@@ -532,33 +693,161 @@ def prepare_ml_dataset(csv_path: Path, output_dir: Path = Path("ml_data")):
         print(f"  Sequence features (X): {X_seq.shape}")
         print(f"  Next actions (y): {y_seq.shape}")
         
-        X_seq_norm, _, _ = FeatureEngineer.normalize_features(X_seq)
+        # Use same normalization as frame-by-frame
+        X_seq_norm, _, _ = FeatureEngineer.normalize_features(X_seq, min_vals, max_vals)
         
         np.save(output_dir / "X_sequences.npy", X_seq)
         np.save(output_dir / "X_sequences_normalized.npy", X_seq_norm)
         np.save(output_dir / "y_sequences.npy", y_seq)
         
-        print(f"  ✅ Saved sequence data")
+        dataset_summary['sequences'] = {
+            'states_shape': X_seq.shape,
+            'actions_shape': y_seq.shape,
+            'files': ['X_sequences.npy', 'X_sequences_normalized.npy', 'y_sequences.npy']
+        }
+        
+        print(f"  ✅ Saved sequence datasets")
+    else:
+        print(f"  ⚠️  Insufficient data for sequences")
     
-    # Feature descriptions
-    feature_names = [
-        "speed_ms", "accel_longitudinal", "accel_lateral",
-        "gear", 'rpm', "lap_fraction", "vx", "vy", "vz",
-        "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
-        "suspension_travel_fl", "suspension_travel_fr", 
-        "suspension_travel_rl", "suspension_travel_rr"
-    ]
+    # ========================================================================
+    # 3. EPISODE-BASED DATASET (for Genetic Algorithm)
+    # ========================================================================
+    print("\n" + "─"*70)
+    print("📊 [3/4] Creating episode-based dataset (GA)...")
+    print("─"*70)
+    
+    episodes_states, episodes_actions, episode_lengths = FeatureEngineer.create_episodes(
+        csv_path, downsample=1
+    )
+    
+    if len(episodes_states) > 0:
+        print(f"  Total episodes: {len(episodes_states)}")
+        print(f"  Episode lengths: min={episode_lengths.min()}, max={episode_lengths.max()}, avg={episode_lengths.mean():.1f}")
+        
+        # Normalize each episode using the same min/max from frame-by-frame
+        episodes_states_norm = []
+        for ep_states in episodes_states:
+            ep_norm, _, _ = FeatureEngineer.normalize_features(ep_states, min_vals, max_vals)
+            episodes_states_norm.append(ep_norm)
+        
+        # Save as numpy arrays (list of variable-length arrays)
+        np.save(output_dir / "episodes_states.npy", np.array(episodes_states, dtype=object), allow_pickle=True)
+        np.save(output_dir / "episodes_actions.npy", np.array(episodes_actions, dtype=object), allow_pickle=True)
+        np.save(output_dir / "episodes_states_normalized.npy", np.array(episodes_states_norm, dtype=object), allow_pickle=True)
+        np.save(output_dir / "episode_lengths.npy", episode_lengths)
+        
+        dataset_summary['episodes'] = {
+            'num_episodes': len(episodes_states),
+            'episode_lengths': f"min={episode_lengths.min()}, max={episode_lengths.max()}, avg={episode_lengths.mean():.1f}",
+            'files': ['episodes_states.npy', 'episodes_actions.npy', 'episode_lengths.npy']
+        }
+        
+        print(f"  ✅ Saved episode-based datasets")
+    else:
+        print(f"  ⚠️  No valid episodes found")
+    
+    # ========================================================================
+    # 4. DQL TRANSITIONS (for Deep Q-Learning)
+    # ========================================================================
+    print("\n" + "─"*70)
+    print("📊 [4/4] Creating DQL transition dataset (DQL)...")
+    print("─"*70)
+    
+    transitions = FeatureEngineer.create_dql_transitions(csv_path, downsample=1)
+    
+    if len(transitions) > 0:
+        print(f"  Total transitions: {transitions.shape}")
+        print(f"  Transition format: [state(17), action(3), reward(1), next_state(17), done(1)] = 39 features")
+        
+        # Compute reward statistics
+        reward_idx = 17 + 3  # After state (17) + action (3)
+        rewards = transitions[:, reward_idx]
+        print(f"  Reward stats: min={rewards.min():.4f}, max={rewards.max():.4f}, mean={rewards.mean():.4f}")
+        
+        # Count terminal states
+        done_idx = 17 + 3 + 1 + 17  # After state + action + reward + next_state
+        num_terminals = int(transitions[:, done_idx].sum())
+        print(f"  Terminal states: {num_terminals}")
+        
+        np.save(output_dir / "dql_transitions.npy", transitions)
+        
+        dataset_summary['dql_transitions'] = {
+            'shape': transitions.shape,
+            'num_terminals': num_terminals,
+            'reward_range': f"[{rewards.min():.4f}, {rewards.max():.4f}]",
+            'files': ['dql_transitions.npy']
+        }
+        
+        print(f"  ✅ Saved DQL transition dataset")
+    else:
+        print(f"  ⚠️  No valid transitions found")
+    
+    # ========================================================================
+    # SAVE METADATA AND FEATURE DESCRIPTIONS
+    # ========================================================================
+    print("\n" + "─"*70)
+    print("📝 Saving metadata and feature descriptions...")
+    print("─"*70)
     
     with open(output_dir / "feature_names.txt", "w") as f:
-        f.write("STATE FEATURES (X):\n")
+        f.write("="*70 + "\n")
+        f.write("ML DATASET FEATURE SCHEMA\n")
+        f.write("="*70 + "\n\n")
+        
+        f.write("STATE FEATURES (X) - 17 dimensions:\n")
         for i, name in enumerate(feature_names):
-            f.write(f"  {i}: {name}\n")
-        f.write("\nACTION LABELS (y):\n")
-        f.write("  0: gas [0-1]\n")
-        f.write("  1: brake [0-1]\n")
-        f.write("  2: steer [-1, 1]\n")
+            f.write(f"  [{i:2d}] {name}\n")
+        
+        f.write("\nACTION LABELS (y) - 3 dimensions:\n")
+        for i, name in enumerate(action_names):
+            f.write(f"  [{i}] {name}\n")
+        
+        f.write("\n" + "="*70 + "\n")
+        f.write("DATASET FILES:\n")
+        f.write("="*70 + "\n\n")
+        
+        f.write("1. FRAME-BY-FRAME (LR/MLP):\n")
+        f.write("   - X_states.npy: Raw state features\n")
+        f.write("   - X_states_normalized.npy: Normalized state features [0,1]\n")
+        f.write("   - y_actions.npy: Action labels [gas, brake, steer]\n")
+        f.write("   - normalization_min.npy: Min values for denormalization\n")
+        f.write("   - normalization_max.npy: Max values for denormalization\n\n")
+        
+        f.write("2. SEQUENCES (LSTM/RNN):\n")
+        f.write("   - X_sequences.npy: Raw state sequences (N, seq_len, 17)\n")
+        f.write("   - X_sequences_normalized.npy: Normalized sequences\n")
+        f.write("   - y_sequences.npy: Next action for each sequence\n\n")
+        
+        f.write("3. EPISODES (GA):\n")
+        f.write("   - episodes_states.npy: List of state arrays per lap\n")
+        f.write("   - episodes_states_normalized.npy: Normalized episode states\n")
+        f.write("   - episodes_actions.npy: List of action arrays per lap\n")
+        f.write("   - episode_lengths.npy: Length of each episode\n\n")
+        
+        f.write("4. DQL TRANSITIONS:\n")
+        f.write("   - dql_transitions.npy: [state, action, reward, next_state, done]\n")
+        f.write("     Format: 39 features total\n")
+        f.write("       [0:17]   = state (17 features)\n")
+        f.write("       [17:20]  = action (gas, brake, steer)\n")
+        f.write("       [20]     = reward (lap progress + speed + smoothness)\n")
+        f.write("       [21:38]  = next_state (17 features)\n")
+        f.write("       [38]     = done (1 if terminal, 0 otherwise)\n")
     
-    print("\n📝 Feature descriptions saved to feature_names.txt")
+    # Print summary
+    print("\n" + "="*70)
+    print("📊 DATASET GENERATION SUMMARY")
+    print("="*70)
+    
+    for dataset_name, info in dataset_summary.items():
+        print(f"\n{dataset_name.upper().replace('_', ' ')}:")
+        for key, value in info.items():
+            if key != 'files':
+                print(f"  {key}: {value}")
+        print(f"  Files: {', '.join(info['files'])}")
+    
+    print(f"\n✅ All datasets saved to: {output_dir}/")
+    print(f"✅ Feature schema saved to: {output_dir}/feature_names.txt")
     print("="*70)
 
 
