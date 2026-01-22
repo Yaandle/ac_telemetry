@@ -42,10 +42,9 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 - Learn what matters vs. what doesn’t
 
 **Outcome:**
-'telemetry_analyse_streamlit.py'
+'telemetry_analyse_streamlit.py',
 'telemetry_analyse_terminal.py'
 
-This stage reinforces **iteration over novelty**.
 
 ---
 
