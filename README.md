@@ -134,7 +134,7 @@ Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 
 **Output:** Timestamped CSV logs with 38 telemetry channels
 
-### 📊 Analytics (telemetry_analyse_terminal.py / telemetry_analyse_streamlit.py)
+### 📊 Analytics (`telemetry_analyse_terminal.py / telemetry_analyse_streamlit.py`)
 Comprehensive analytics tools for ACC telemetry:
 
 **Core Capabilities:**
