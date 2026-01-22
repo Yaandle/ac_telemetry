@@ -42,7 +42,8 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 - Learn what matters vs. what doesn’t
 
 **Outcome:**            
-`telemetry_analyse_streamlit.py` provides UI visualisations and analytics, `telemetry_analyse_terminal.py` provides CLI-based analytics and ML dataset preparation.
+`telemetry_analyse_streamlit.py` provides UI visualisations and analytics;         
+`telemetry_analyse_terminal.py` provides CLI-based analytics and ML dataset preparation.
 
 ---
 
