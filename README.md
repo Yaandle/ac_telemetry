@@ -11,8 +11,9 @@ Each stage represents a shift in **how** the work is approached, not just **what
 ---
 
 ### Current Position
-- **Partial Stage:** 3 — System Formation *(in progress)*
-- **Partial Stage:** 4 - Speed + Experimentation *(in progress)*
+-  3 — System Formation *(finished)*
+-  4-5 - Speed + Experimentation *(finalising)*
+-  5-8 - Iteration with real world *(in progress)*
 
 
 ---
@@ -56,7 +57,7 @@ This stage reinforces **iteration over novelty**.
 **Goal:** Turn working scripts into a coherent, reusable system.
 
 This repository intentionally includes early Stage 3 elements, even while Stage 2 work continues.
-It introduces the 'feature_schema.py' file.
+It introduces the base 'driver.py' and 'feature_schema.py' files.
 **Stage 3 characteristics already present:**
 - Modular file structure (capture, analysis, ML, export)
 - Clear input/output boundaries
@@ -95,9 +96,29 @@ Testing multiple learning paradigms against the same task to understand how defi
 - Logs results
 - Compares against baselines
 
-MLP: Hidden Width (Does more capacity help?), (Does it overfit instantly?
-GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it?
-DQL: Reward Weight (Does reward shaping dominate?), (When does it collapse?)
+- MLP: Hidden Width (Does more capacity help?), (Does it overfit instantly?
+- GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it?
+- DQL: Reward Weight (Does reward shaping dominate?), (When does it collapse?)
+
+### Stage 5–8 — Iteration with Real World *(Current)* ⚡
+
+**Goal:** Touch reality — users, data, constraints.
+
+At this stage, learning is no longer offline-only or theoretical.
+The *same system* built in Stage 3 and exercised in Stage 4–5 is now
+tested directly inside the simulator, frame-by-frame, under real timing constraints.
+
+No new core abstractions are introduced here.
+Instead, assumptions are stressed.
+
+**Focus areas:**
+- Real-time execution (100Hz loop stability)
+- Noisy and imperfect telemetry
+- Action clipping, saturation, and deadzones
+- Latency between observation → decision → actuation
+- Failure modes (spins, stalls, divergence, unsafe actions)
+
+This stage creates **engineering maturity**, not better training metrics.
 
 
 ## What The System Does (Files)
@@ -136,6 +157,37 @@ Both use feature_schema.py for consistent feature definitions
 Both consume CSV data produced by telemetry_reader.py
 Differences limited to interface and visualization
 
+### 🎮 Driver (`driver.py`)
+
+Executes trained or evolving policies inside the live driving environment.
+
+This file closes the loop between:
+**state → policy → action → consequence**
+
+It is the system’s **actuation layer** and a prerequisite for any real-world iteration.
+
+**What it consumes:**
+- Live vehicle state from shared memory
+- Feature schema for state construction
+- Trained policy artifacts (Linear, MLP, GA, DQL)
+
+**What it produces:**
+- Real-time control commands (steer, throttle, brake)
+- Completed laps (or failures)
+- Episode-level performance signals:
+  - Distance driven
+  - Laps completed
+  - Stability (off-track, spins, stalls)
+  - Policy collapse or divergence
+
+**Why it matters:**
+Offline metrics (R², loss) do not guarantee drivability.
+`driver.py` is where policies either *move the car* or fail visibly.
+
+This file is introduced in **Stage 3 (System Formation)** and becomes the
+primary tool for **Stage 5–8 (Reality Iteration)**.
+
+
 ### 🧩 Feature Schema (`feature_schema.py`)
 **Single source of truth** for ML feature definitions:
 
@@ -156,7 +208,7 @@ Differences limited to interface and visualization
 **Why It Matters:**
 Without a centralized schema, it's easy to introduce bugs where training uses features in one order but inference expects a different order. This file eliminates that entire class of errors by making feature order explicit and validated.
 
-### 🤖 ML Training (`mlp_trainer.py`)
+### 🤖 ML Training (`ml_trainer.py`)
 Train baseline models to predict driver inputs from vehicle state:
 
 **Models:**
@@ -181,7 +233,7 @@ Train baseline models to predict driver inputs from vehicle state:
 - Prevents training with mismatched or corrupted datasets
 
 ### 📦 Export Tools (`export_file.py`)
-Efficiently extract specific columns and rows from large CSV files for spreadsheet analysis without importing entire datasets.
+Efficiently extract specific columns and rows from large CSV files for analysis without importing entire datasets.
 
 ### 🎮 Driver File ('driver.py')
 Executes trained or evolving policies in the driving environment and evaluates task-level performance under a fixed interface.
@@ -189,37 +241,14 @@ Executes trained or evolving policies in the driving environment and evaluates t
 driver.py is the single execution surface for all learning paradigms.
 Role in the System:
 - Consumes a vehicle state vector (from telemetry or simulator)
-- Applies a policy (MLP, GA genome, DQL policy)
+- Applies a policy (linear, MLP, GA genome, DQL policy)
 - Outputs control actions:
     - Steering
     - Throttle
     - Brake
+- Computes task completion metrics at episode end.
 
-Computes task completion metrics at episode end
 
-
-## Why This Pipeline?
-
-### Skills Practiced
-- **Data Engineering:** Real-time capture from memory-mapped files, ETL pipelines
-- **Analytics:** SQL queries, aggregations, descriptive statistics
-- **Feature Engineering:** Transform raw telemetry into ML-ready features
-- **Machine Learning:** Supervised learning, model evaluation, prediction
-- **Visualization:** Interactive plots, time-series analysis
-- **Software Design:** Modular architecture, extensible frameworks
-
-### Robotics Alignment
-This pipeline treats the car as a robotic system with direct parallels to real-world robotics:
-
-| Telemetry Feature | Robotics Analogue |
-|------------------|-------------------|
-| Velocity vector (vx, vy, vz) | Odometry / state estimation |
-| Acceleration (ax, ay, az) | IMU measurements |
-| Wheel slip/angles | Contact/terrain feedback |
-| Gas/brake/steer | Actuator commands |
-| Lap fraction | Mission progress tracker |
-
-This enables sim-to-real transfer research and autonomous driving experiments.
 
 ## Quick Start
 
@@ -244,12 +273,12 @@ cd ac_telemetry
 
 **2. Create virtual environment:**
 ```bash
-python -m venv ac_telemetry_venv
+python -m venv acc_telemetry_venv
 ```
 
 **3. Activate virtual environment:**
 ```bash
-ac_telemetry_venv\Scripts\activate
+acc_telemetry_venv\Scripts\activate
 ```
 
 **4. Install dependencies:**
@@ -257,8 +286,11 @@ ac_telemetry_venv\Scripts\activate
 # Core analytics
 pip install duckdb plotly pandas
 
-# ML training (optional)
-pip install scikit-learn matplotlib joblib
+# ML training
+pip install scikit-learn matplotlib joblib torch
+
+# Controller interface
+pip install vgamepad
 ```
 
 ## Usage
@@ -273,8 +305,8 @@ python telemetry_reader.py
 
 **What happens:**
 - ✅ Connects to ACC's shared memory
-- 📊 Displays live telemetry in terminal (5-second updates)
-- 💾 Logs data to `telemetry_logs/acc_session_TIMESTAMP.csv`
+- 📊 Streams telemetry at ~100Hz
+- 💾 Logs CSV to `telemetry_logs/acc_session_TIMESTAMP.csv`
 - ⏹️ Press Ctrl+C to stop and view session statistics
 
 **Output example:**
@@ -290,121 +322,67 @@ Wheel Dynamics:
   Suspension: Front 28mm | Rear 38mm (rear-biased)
 ```
 
-### 2️⃣ Analyze Session
+This data is your ground truth human driving behaviour.
+
+
+### 2️⃣ Analyse Session + Prepare ALL ML Datasets 
+Convert raw telemetry into all datasets needed for every learning method:
 
 **Basic analytics:**
+📊 Terminal analytics: Session summary, lap breakdown, distributions
 ```bash
 python telemetry_analysis.py telemetry_logs/acc_session_20251214_143022.csv
 ```
 
-**With visualizations:**
+**With visualisations:**
+📈 UI visualisation: Session summary, lap breakdown, distributions
 ```bash
-python telemetry_analysis.py your_session.csv --plots
+python telemetry_analysis_streamlit.py
 ```
 
 **Prepare ML datasets:**
+🤖 ML datasets: `ml_data/` directory with normalized features
 ```bash
-python telemetry_analysis.py your_session.csv --ml
+python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
 ```
+This creates ALL datasets needed for training:
+- ml_data/X_states.npy                     (frame-by-frame for Linear / MLP)
+- ml_data/y_actions.npy
+- ml_data/X_states_normalized.npy
+- ml_data/normalization_min.npy
+- ml_data/normalization_max.npy
+- ml_data/X_sequences.npy                  (sequences for LSTM – future use)
+- ml_data/X_sequences_normalized.npy
+- ml_data/y_sequences.npy
+- ml_data/episodes_states.npy              (episodes for Genetic Algorithm)
+- ml_data/episodes_actions.npy
+- ml_data/episodes_states_normalized.npy
+- ml_data/episode_lengths.npy
+- ml_data/dql_transitions.npy              (transitions for Deep Q-Learning)
+- ml_data/feature_names.txt                (feature documentation)
 
-**What you get:**
-- 📊 Terminal analytics: Session summary, lap breakdown, distributions
-- 📈 HTML visualizations: `speed_trace.html`, `control_inputs.html`, `acceleration.html`
-- 🤖 ML datasets: `ml_data/` directory with normalized features
 
 ### 3️⃣ Train ML Models
+All model training can be handled by a single unified script.
 
 ```bash
-python ml_trainer.py --data_dir ml_data --output_dir ml_results
+python ml_trainer.py --all
+
+This creates:
+ml_results/linear_regression_*.pkl        (Linear baseline)
+ml_results/mlp_64_32_*.pkl                (MLP: 64-32)
+ml_results/mlp_128_64_32_*.pkl            (MLP: 128-64-32)
+ml_results/mlp_256_128_64_*.pkl           (MLP: 256-128-64)
+ml_results/ga_model.pkl                   (Genetic Algorithm)
+ml_results/dql_model.pt                   (Deep Q-Learning)
+ml_results/*.png                          (visualisations)
+ml_results/training_report.txt
 ```
-
-**Output:**
-- Trained models (Linear, MLP variants)
-- Performance metrics (RMSE, R² per action)
-- Prediction plots: `ml_results/*.png`
-- Training report: `ml_results/training_report.txt`
-
-**Example results:**
-```
-Linear Regression (18 features):
-  Gas R²:   0.564
-  Brake R²: 0.556
-  Steer R²: 0.321
-  Overall:  0.481
-
-MLP (128,64,32):
-  Gas R²:   0.6-0.7 (expected)
-  Brake R²: 0.6-0.7 (expected)
-  Steer R²: 0.4-0.5 (expected)
-```
-
-**Note:** Wheel dynamics features (slip, angles, suspension) significantly improve prediction accuracy.
-
-### 4️⃣ Export for Spreadsheets
-
-```bash
-python export_file.py
-```
-
-Extract specific columns and rows for custom analysis in Excel/Google Sheets without loading massive CSV files.
-
-## Data Structure
-
-### CSV Format (38 columns, 100Hz sampling)
-
-**Timing & Position:**
-```
-timestamp, lap_time_str, completed_laps, current_lap,
-distance_m, lap_fraction
-```
-
-**Kinematics:**
-```
-speed_kmh, speed_ms, gear, rpm,
-vx, vy, vz,                    # Velocity vector (m/s)
-ax, ay, az,                    # Acceleration (m/s²)
-accel_longitudinal,            # Forward/backward accel
-accel_lateral                  # Side-to-side accel
-```
-
-**Control Inputs:**
-```
-gas, brake, steer, abs_steer,
-gas_smooth, brake_smooth, steer_smooth    # Filtered inputs
-```
-
-**Wheel Telemetry (FL, FR, RL, RR):**
-```
-wheel_slip_*, slip_angle_*, suspension_travel_*
-```
-
-**Other:**
-```
-fuel_kg
-```
-
-### ML Dataset Format
-
-**State Features (X): 18-dimensional vector**
-
-*Basic state (10 features):*
-- `speed_ms`, `accel_longitudinal`, `accel_lateral`, `abs_steer`
-- `gear`, `rpm`, `lap_fraction`
-- `vx`, `vy`, `vz` (velocity components)
-
-*Wheel dynamics (8 features):*
-- `wheel_slip_fl/fr/rl/rr` (slip ratios)
-- `suspension_travel_fl/fr/rl/rr` (travel distance)
-
-**Action Labels (y): 3-dimensional vector**
-- `gas` [0-1], `brake` [0-1], `steer` [-1, 1]
-
-**Files generated:**
-- `X_states.npy` / `X_states_normalized.npy`
-- `y_actions.npy`
-- `X_sequences.npy` (for temporal models)
-- `normalization_min/max.npy` (for inference)
-- `feature_names.txt` (documentation)
+Generated once, reused everywhere:
+- Frame data for Linear / MLP
+- Episodes for Genetic Algorithms
+- Transitions for Deep Q-Learning
+- Shared normalisation + feature schema
 
 ## Example Workflows
 
@@ -414,12 +392,8 @@ fuel_kg
 python telemetry_reader.py
 
 # Analyze lap times and consistency
-python telemetry_analysis.py session.csv --plots
+python telemetry_analysis.py session.csv 
 
-# Review in browser:
-# - speed_trace.html (speed over time with lap markers)
-# - control_inputs.html (throttle/brake/steer patterns)
-# - acceleration.html (G-G diagram)
 ```
 
 ### 🤖 ML Experiment
@@ -435,6 +409,14 @@ python ml_trainer.py
 
 # 4. Review predictions
 # Check ml_results/ for overlay plots and model comparison
+
+--lr        Train Linear Regression (baseline)
+--mlp       Train 3 MLP architectures (64-32, 128-64-32, 256-128-64)
+--ga        Train Genetic Algorithm on episode data
+--dql       Train Deep Q-Learning on transitions
+--all       Train everything (default if no flags given)
+
+
 ```
 
 ### 📊 Multi-Session Analysis
@@ -448,64 +430,19 @@ python telemetry_analysis.py combined.csv --ml --plots
 
 ## Advanced Features
 
-### Custom SQL Queries
 
-```python
-import duckdb
-
-con = duckdb.connect()
-
-# Find fastest lap
-query = """
-SELECT current_lap, 
-       MAX(timestamp) - MIN(timestamp) as lap_time
-FROM read_csv_auto('session.csv')
-GROUP BY current_lap
-ORDER BY lap_time
-LIMIT 1
-"""
-
-# High-speed braking zones
-query = """
-SELECT timestamp, speed_kmh, brake
-FROM read_csv_auto('session.csv')
-WHERE brake > 0.8 AND speed_kmh > 150
-"""
 ```
 
-### Extending the Pipeline
 
-**Add new sensors:**
-1. Define memory offset in `telemetry_reader.py`
-2. Parse in `ACTelemetryReader.read_frame()`
-3. Add to `TelemetryFrame` dataclass
-4. Update CSV headers
-5. Update `feature_schema.py` if used for ML
-
-**Add custom features:**
-1. Modify `FeatureEngineer.create_state_action_pairs()` in `telemetry_analysis.py`
-2. Update `POLICY_FEATURES` in `feature_schema.py`
-3. Regenerate datasets with `--ml` flag
-
-**Add new models:**
-1. Extend `BaselineModel` class in `ml_trainer.py`
-2. Implement `train()` method
-3. Add to models list in `main()`
-
-## Use Cases
-
-- 🏎️ **Driver improvement:** Analyze braking points, corner speeds, consistency
-- 🎓 **Research:** Imitation learning, autonomous driving, sim-to-real transfer
-- 📊 **Data science practice:** Real-world ETL, analytics, ML pipelines
-- 🤖 **Robotics experiments:** Control policy learning from human demonstrations
-- 📈 **Performance engineering:** Tire behavior, G-forces, vehicle dynamics
 
 ## Project Structure
 
 ```
 ac_telemetry/
-├── telemetry_reader.py      # Real-time data capture (100Hz)
-├── telemetry_analysis.py    # Analytics + ML dataset prep
+├── telemetry_reader.py       # Real-time data capture (100Hz)
+├── telemetry_analysis_terminal.py       # Analytics + ML dataset prep
+├── telemetry_analysis_streamlit.py      # Streamlit UI
+├── driver.py                 # Real-time driving control
 ├── ml_trainer.py             # Train baseline models
 ├── feature_schema.py         # Feature definitions & validation
 ├── export_file.py            # Extract data for spreadsheets
@@ -526,42 +463,6 @@ ac_telemetry/
 - Assetto Corsa Competizione (data source)
 - Windows (for shared memory access)
 
-## Troubleshooting
-
-**"ACC shared memory not found"**
-- Ensure Assetto Corsa Competizione is running before starting telemetry reader
-
-**Models perform poorly (R² < 0.5)**
-- Capture more data (30+ laps minimum)
-- Ensure consistent driving style
-- Check data quality with `--plots`
-
-**"Feature count mismatch" error**
-- Regenerate ML datasets: `python telemetry_analysis.py session.csv --ml`
-- This ensures dataset matches current `feature_schema.py`
-
-**Large file sizes**
-- Use `export_file.py` to extract relevant columns
-- Downsample in analysis: `--downsample 2`
-- Compress old sessions: `gzip session.csv`
-
-## Future Enhancements
-
-- [ ] Real-time prediction dashboard
-- [ ] LSTM/RNN sequence models
-- [ ] Track map overlay with telemetry
-- [ ] Multi-car comparison tools
-- [ ] Cloud storage integration
-- [ ] ACC plugin integration (custom apps)
-
-## Contributing
-
-Contributions welcome! Areas of interest:
-- Additional ML architectures (transformers, attention)
-- Real-time inference during gameplay
-- Track-specific model training
-- Visualization improvements
-
 ## License
 
 MIT License - Free to use, modify, and distribute.
@@ -569,3 +470,11 @@ MIT License - Free to use, modify, and distribute.
 ---
 
 Built to practice data engineering, analytics, and ML skills while racing. A small tool that helps maintain consistency and actively apply technical concepts instead of just reading them. 🏁
+
+### Skills Practised
+- **Data Engineering:** Real-time capture from memory-mapped files, ETL pipelines
+- **Analytics:** SQL queries, aggregations, descriptive statistics
+- **Feature Engineering:** Transform raw telemetry into ML-ready features
+- **Machine Learning:** Supervised learning, model evaluation, prediction
+- **Visualization:** Interactive plots, time-series analysis
+- **Software Design:** Modular architecture, extensible frameworks
