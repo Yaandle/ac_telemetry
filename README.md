@@ -36,17 +36,14 @@ Each stage represents a shift in **how** the work is approached, not just **what
 
 **Goal:** Build the same thing twice with small, meaningful variation.
 Stage 2 consists of two parallel analytics implementations, both built directly on top of the same telemetry reader output and shared analysis logic.
-- telemetry_analyse_streamlit.py
-- telemetry_analyse_terminal.py
 
 - Reuse ≥70% of code
 - Change one dimension at a time
 - Learn what matters vs. what doesn’t
 
 **Outcome:**
-- Terminal-based analytics
-- CSV / SQL-driven analytics
-- Visualization + ML dataset preparation from the same raw data
+- telemetry_analyse_streamlit.py
+- telemetry_analyse_terminal.py
 
 This stage reinforces **iteration over novelty**.
 
@@ -145,8 +142,8 @@ Comprehensive analytics tools for ACC telemetry:
 **Core Capabilities:**
 Session summaries: Max/avg speeds, lap breakdowns, G-forces
 Input distributions: Throttle, brake, steering usage patterns
-Wheel telemetry: Slip, slip angles, suspension travel analysis
-ML dataset preparation: State-action pairs, normalized datasets, temporal sequences
+Wheel telemetry: Slip, suspension travel analysis
+ML dataset preparation: State-action pairs, normalised datasets, temporal sequences
 
 **Differences:**
 telemetry_analyse_terminal.py – CLI-first, textual summaries, fast iteration
@@ -155,7 +152,8 @@ telemetry_analyse_streamlit.py – Web-based, interactive charts and sliders
 **Shared Foundation:**
 Both use feature_schema.py for consistent feature definitions
 Both consume CSV data produced by telemetry_reader.py
-Differences limited to interface and visualization
+Differences limited to interface and visualisation
+
 
 ### 🎮 Driver (`driver.py`)
 
