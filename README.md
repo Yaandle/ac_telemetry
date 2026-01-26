@@ -60,7 +60,6 @@ It introduces the base 'driver.py' and 'feature_schema.py' files.
 - Validation layers to prevent silent errors
 - Reproducible workflows
 
-
 **Repo is understandable in:**
 - ~1 minute (README)
 - ~10 minutes (code)
@@ -115,7 +114,7 @@ Instead, assumptions are stressed.
 
 This stage creates **engineering maturity**, not better training metrics.
 
-
+l
 ## What The System Does (Files)
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
@@ -134,7 +133,7 @@ Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 
 **Output:** Timestamped CSV logs with 38 telemetry channels
 
-### 📊 Analytics (`telemetry_analyse_terminal.py / telemetry_analyse_streamlit.py`)
+### 📊 Analytics (`ltelemetry_analyse_terminal.py / telemetry_analyse_streamlit.py`)
 Comprehensive analytics tools for ACC telemetry:
 
 **Core Capabilities:**
@@ -230,20 +229,6 @@ Train baseline models to predict driver inputs from vehicle state:
 
 ### 📦 Export Tools (`export_file.py`)
 Efficiently extract specific columns and rows from large CSV files for analysis without importing entire datasets.
-
-### 🎮 Driver File ('driver.py')
-Executes trained or evolving policies in the driving environment and evaluates task-level performance under a fixed interface.
-
-driver.py is the single execution surface for all learning paradigms.
-Role in the System:
-- Consumes a vehicle state vector (from telemetry or simulator)
-- Applies a policy (linear, MLP, GA genome, DQL policy)
-- Outputs control actions:
-    - Steering
-    - Throttle
-    - Brake
-- Computes task completion metrics at episode end.
-
 
 
 ## Quick Start
