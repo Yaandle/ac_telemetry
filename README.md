@@ -1,12 +1,13 @@
 # AC Telemetry Analytics
 
-A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione that captures real-time driving data at 100Hz and transforms it into insights, built to practice data analytics skills while racing.
+A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione, capturing real-time driving data at 100Hz and transforming it into insights, built to practice data analytics skills while racing.
 
 ## Execution Framework (Fibonacci Ladder)
 
-This project is developed using a **Fibonacci Ladder execution framework**, designed to prioritise completion, iteration, and system-building over novelty.
+This project follows a **Fibonacci Ladder execution framework** —
+each stage changes *how* the work is approached, not just *what* is built.
 
-Each stage represents a shift in **how** the work is approached, not just **what** is built.
+The goal is completion, iteration, and system understanding over novelty.
 
 ---
 
@@ -53,6 +54,7 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 
 This repository intentionally includes early Stage 3 elements, even while Stage 2 work continues.
 It introduces the base 'driver.py' and 'feature_schema.py' files.
+
 **Stage 3 characteristics already present:**
 - Modular file structure (capture, analysis, ML, export)
 - Clear input/output boundaries
@@ -77,7 +79,7 @@ This keeps the system usable **without overengineering**.
 
 **Goal:** Run many small, controlled experiments quickly to test ideas against reality.
 
-Testing multiple learning paradigms against the same task to understand how definitions of learning shape behaviour
+Testing multiple learning paradigms against the same task to expose their failure modes under identical constraints.
 
 **Planned focus:**
 - Linear Regression (baseline)
@@ -98,6 +100,7 @@ Testing multiple learning paradigms against the same task to understand how defi
 
 **Goal:** Touch reality — users, data, constraints.
 
+This stage creates **engineering maturity**, not better training metrics.
 At this stage, learning is no longer offline-only or theoretical.
 The *same system* built in Stage 3 and exercised in Stage 4–5 is now
 tested directly inside the simulator, frame-by-frame, under real timing constraints.
@@ -112,9 +115,7 @@ Instead, assumptions are stressed.
 - Latency between observation → decision → actuation
 - Failure modes (spins, stalls, divergence, unsafe actions)
 
-This stage creates **engineering maturity**, not better training metrics.
 
-l
 ## What The System Does (Files)
 
 ### 🎮 Data Capture (`telemetry_reader.py`)
@@ -134,7 +135,7 @@ Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 **Output:** Timestamped CSV logs with 38 telemetry channels
 
 ### 📊 Analytics (`ltelemetry_analyse_terminal.py / telemetry_analyse_streamlit.py`)
-Comprehensive analytics tools for ACC telemetry:
+Analytics tools for ACC telemetry:
 
 **Core Capabilities:**
 Session summaries: Max/avg speeds, lap breakdowns, G-forces
