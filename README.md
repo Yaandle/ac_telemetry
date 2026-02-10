@@ -2,6 +2,10 @@
 
 A Python-based telemetry capture and analysis tool for Assetto Corsa Competizione, capturing real-time driving data at 100Hz and transforming it into insights, built to practice data analytics skills while racing.
 
+![Project Screenshot](static/screenshot1.png)
+
+
+
 ## Execution Framework (Fibonacci Ladder)
 
 This project follows a **Fibonacci Ladder execution framework** —
