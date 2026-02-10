@@ -15,14 +15,6 @@ The goal is completion, iteration, and system understanding over novelty.
 
 ---
 
-### Current Position
--  3 — System Formation *(finished)*
--  4-5 - Speed + Experimentation *(finalising)*
--  5-8 - Iteration with real world *(in progress)*
-
-
----
-
 ### Stage 1 — Foundational Win ✅
 
 **Goal:** Finish something small, real, and runnable.
