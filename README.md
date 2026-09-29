@@ -302,8 +302,6 @@ python telemetry_analysis.py combined.csv --ml --plots
 ## Advanced Features
 
 
-```
-
 
 
 ## Project Structure
