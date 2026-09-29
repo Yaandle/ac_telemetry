@@ -49,7 +49,7 @@ Executes trained or evolving policies inside the live driving environment.
 This file closes the loop between:
 **state → policy → action → consequence**
 
-It is the system’s **actuation layer** and a prerequisite for any real-world iteration.
+It is the system's **actuation layer** and a prerequisite for any real-world iteration.
 
 **What it consumes:**
 - Live vehicle state from shared memory
@@ -238,8 +238,10 @@ All model training can be handled by a single unified script.
 
 ```bash
 python ml_trainer.py --all
+```
 
 This creates:
+```
 ml_results/linear_regression_*.pkl        (Linear baseline)
 ml_results/mlp_64_32_*.pkl                (MLP: 64-32)
 ml_results/mlp_128_64_32_*.pkl            (MLP: 128-64-32)
@@ -264,7 +266,6 @@ python telemetry_reader.py
 
 # Analyze lap times and consistency
 python telemetry_analysis.py session.csv 
-
 ```
 
 ### 🤖 ML Experiment
@@ -280,14 +281,6 @@ python ml_trainer.py
 
 # 4. Review predictions
 # Check ml_results/ for overlay plots and model comparison
-
---lr        Train Linear Regression (baseline)
---mlp       Train 3 MLP architectures (64-32, 128-64-32, 256-128-64)
---ga        Train Genetic Algorithm on episode data
---dql       Train Deep Q-Learning on transitions
---all       Train everything (default if no flags given)
-
-
 ```
 
 ### 📊 Multi-Session Analysis
@@ -301,8 +294,16 @@ python telemetry_analysis.py combined.csv --ml --plots
 
 ## Advanced Features
 
+### Selective Model Training
+`ml_trainer.py` accepts flags to train specific models:
 
-
+```
+--lr        Train Linear Regression (baseline)
+--mlp       Train 3 MLP architectures (64-32, 128-64-32, 256-128-64)
+--ga        Train Genetic Algorithm on episode data
+--dql       Train Deep Q-Learning on transitions
+--all       Train everything (default if no flags given)
+```
 
 ## Project Structure
 
@@ -362,7 +363,7 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 
 - Reuse ≥70% of code
 - Change one dimension at a time
-- Learn what matters vs. what doesn’t
+- Learn what matters vs. what doesn't
 
 **Outcome:**            
 `telemetry_analyse_streamlit.py` provides UI visualisations and analytics;         
@@ -414,8 +415,8 @@ Testing multiple learning paradigms against the same task to expose their failur
 - Logs results
 - Compares against baselines
 
-- MLP: Hidden Width (Does more capacity help?), (Does it overfit instantly?
-- GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it?
+- MLP: Hidden Width (Does more capacity help?), (Does it overfit instantly?)
+- GA: Mutation Rate (Does more simulation explore or chaos?), (How sensitive is it?)
 - DQL: Reward Weight (Does reward shaping dominate?), (When does it collapse?)
 
 ### Stage 5–8 — Iteration with Real World *(Current)* ⚡
