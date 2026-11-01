@@ -136,20 +136,27 @@
     return a[key] + (b[key] - a[key]) * u;
   }
 
-  // Median line across laps on a fixed distance grid, plus its unit normals.
+  // Mean line across laps on a fixed distance grid, smoothed over ~±10 m, with unit normals
+  // and signed curvature (1/m; the curve's centre lies at +normal / curvature).
+  // Mean, not per-axis median: taking x and y medians separately can mix laps and zig-zag.
   function reference(traces, lapMeters, stepM) {
     const step = stepM || 2, n = Math.floor(lapMeters / step);
     const ref = [];
     for (let k = 0; k < n; k++) {
       const d = k * step;
-      ref.push({ d, x: median(traces.map((p) => sampleAt(p, d, 'x'))),
-                    y: median(traces.map((p) => sampleAt(p, d, 'y'))) });
+      const xs = traces.map((p) => sampleAt(p, d, 'x')), ys = traces.map((p) => sampleAt(p, d, 'y'));
+      ref.push({ d, x: xs.reduce((s, v) => s + v, 0) / xs.length, y: ys.reduce((s, v) => s + v, 0) / ys.length });
     }
-    smooth(ref, 3);
+    smooth(ref, Math.ceil(10 / step));
+    const w = Math.max(1, Math.ceil(4 / step));   // tangent from points ~±4 m apart
+    const tang = ref.map((_, k) => {
+      const a = ref[(k - w + n) % n], b = ref[(k + w) % n], l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+      return { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+    });
     for (let k = 0; k < n; k++) {
-      const a = ref[(k - 1 + n) % n], b = ref[(k + 1) % n];
-      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1;
-      ref[k].nx = -(b.y - a.y) / l; ref[k].ny = (b.x - a.x) / l;   // left of travel on screen
+      ref[k].nx = -tang[k].y; ref[k].ny = tang[k].x;   // left of travel on screen
+      const a = tang[(k - w + n) % n], b = tang[(k + w) % n];
+      ref[k].curv = (a.x * b.y - a.y * b.x) / (2 * w * step);   // dθ/ds
     }
     return ref;
   }
@@ -164,13 +171,41 @@
   }
 
   // Signed sideways offset (m) of a lap from the reference line; + = left of the reference.
+  // Measured against the nearest reference point (searched ±30 m around the lap distance), so
+  // small disagreements between lap distance and position don't leak into the sideways offset.
+  // Also sets p.k = fractional reference index (projection onto the nearest segment).
   function offsets(pts, ref) {
-    const step = ref.length > 1 ? ref[1].d : 1;
+    const n = ref.length, step = n > 1 ? ref[1].d : 1, W = Math.ceil(30 / step);
     return pts.map((p) => {
-      const k = Math.max(0, Math.min(ref.length - 1, Math.round(p.d / step)));
-      const r = ref[k];
+      const k0 = Math.round(p.d / step);
+      let bk = 0, bd = Infinity;
+      for (let j = -W; j <= W; j++) {
+        const k = ((k0 + j) % n + n) % n, r = ref[k];
+        const dd = (p.x - r.x) ** 2 + (p.y - r.y) ** 2;
+        if (dd < bd) { bd = dd; bk = k; }
+      }
+      // Project onto the segment before or after the nearest point, whichever is closer
+      let best = { k: bk, t: 0, dd: bd };
+      [bk - 1, bk].forEach((s) => {
+        const a = ref[(s + n) % n], b = ref[(s + 1) % n];
+        const vx = b.x - a.x, vy = b.y - a.y, l2 = vx * vx + vy * vy || 1;
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / l2));
+        const dd = (p.x - a.x - vx * t) ** 2 + (p.y - a.y - vy * t) ** 2;
+        if (dd < best.dd) best = { k: (s + n) % n, t, dd };
+      });
+      p.k = best.k + best.t;
+      const r = refAt(ref, p.k);
       return (p.x - r.x) * r.nx + (p.y - r.y) * r.ny;
     });
+  }
+
+  // Reference position, normal and curvature at a fractional index (linear interpolation, wraps).
+  function refAt(ref, kf) {
+    const n = ref.length, i = Math.floor(kf), t = kf - i;
+    const a = ref[((i % n) + n) % n], b = ref[(((i + 1) % n) + n) % n];
+    const nx = a.nx + (b.nx - a.nx) * t, ny = a.ny + (b.ny - a.ny) * t, l = Math.hypot(nx, ny) || 1;
+    return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, nx: nx / l, ny: ny / l,
+             curv: a.curv + (b.curv - a.curv) * t, d: a.d + (b.d - a.d) * t };
   }
 
   /* ---------- export for ML Track Trainer ---------- */
@@ -202,5 +237,5 @@
     return trackForTrainer(ref, info.lapMeters, track);
   }
 
-  global.AccCsv = { parse, laps, orientation, trace, sampleAt, reference, offsets, trackForTrainer, trackFromCsv };
+  global.AccCsv = { parse, laps, orientation, trace, sampleAt, reference, offsets, refAt, trackForTrainer, trackFromCsv };
 })(typeof window !== 'undefined' ? window : globalThis);
