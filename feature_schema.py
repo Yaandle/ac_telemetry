@@ -38,17 +38,30 @@ POLICY_FEATURES = [
 ]
 
 # Full CSV telemetry fields produced by `reader.py` (source of truth for logging)
+# Must match reader.TelemetryFrame field order
 FULL_TELEMETRY_FIELDS = [
     "timestamp", "lap_time_str", "completed_laps", "current_lap",
     "speed_kmh", "speed_ms", "gear", "rpm",
-    "vx", "vy", "vz", "ax", "ay", "az",
+    "vx", "vy", "vz",
     "accel_longitudinal", "accel_lateral",
-    "gas", "brake", "steer", "abs_steer",
-    "gas_smooth", "brake_smooth", "steer_smooth",
+    "gas", "brake", "steer",
     "distance_m", "lap_fraction",
-    "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr",
+    "wheel_slip_fl", "wheel_slip_fr", "wheel_slip_rl", "wheel_slip_rr", "wheel_slip_valid",
     "suspension_travel_fl", "suspension_travel_fr", "suspension_travel_rl", "suspension_travel_rr",
     "fuel_kg",
+    # Race context
+    "session_type", "status", "position", "lap_time_ms", "last_lap_ms", "best_lap_ms",
+    "is_valid_lap", "in_pit_lane", "flag", "green_flag", "gap_ahead_ms", "gap_behind_ms",
+    "session_time_left_s", "sector",
+    # Track position
+    "pos_x", "pos_y", "pos_z", "heading", "yaw_rate",
+    # Tyres & brakes
+    "tyre_temp_fl", "tyre_temp_fr", "tyre_temp_rl", "tyre_temp_rr",
+    "tyre_press_fl", "tyre_press_fr", "tyre_press_rl", "tyre_press_rr",
+    "brake_temp_fl", "brake_temp_fr", "brake_temp_rl", "brake_temp_rr",
+    "slip_angle_fl", "slip_angle_fr", "slip_angle_rl", "slip_angle_rr",
+    # Driver aids
+    "tc_active", "abs_active", "tyres_out",
 ]
 
 # AVAILABLE_FIELDS: full set of fields available/working in ACC shared memory
@@ -290,11 +303,8 @@ FIELD_METADATA = {
     "vx":              {"type": "float", "description": "Velocity X (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[0]"},
     "vy":              {"type": "float", "description": "Velocity Y (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[1]"},
     "vz":              {"type": "float", "description": "Velocity Z (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[2]"},
-    "ax":              {"type": "float", "description": "Acceleration X (raw)", "unit": "m/s²", "source": "SPageFilePhysics.accG[0]"},
-    "ay":              {"type": "float", "description": "Acceleration Y (raw)", "unit": "m/s²", "source": "SPageFilePhysics.accG[1]"},
-    "az":              {"type": "float", "description": "Acceleration Z (raw)", "unit": "m/s²", "source": "SPageFilePhysics.accG[2]"},
-    "accel_longitudinal": {"type": "float", "description": "Longitudinal acceleration (derived from ax)", "unit": "m/s²", "source": "derived (ax)"},
-    "accel_lateral":   {"type": "float", "description": "Lateral acceleration (derived from az)", "unit": "m/s²", "source": "derived (az)"},
+    "accel_longitudinal": {"type": "float", "description": "Longitudinal acceleration", "unit": "G", "source": "SPageFilePhysics.accG[0]"},
+    "accel_lateral":   {"type": "float", "description": "Lateral acceleration", "unit": "G", "source": "SPageFilePhysics.accG[2]"},
 
     # Controls (raw + smoothed)
     "gas":             {"type": "float", "description": "Throttle input", "unit": "[0-1]", "source": "SPageFilePhysics.gas"},
@@ -307,17 +317,18 @@ FIELD_METADATA = {
 
     # Position & progress
     "distance_m":      {"type": "float", "description": "Accumulated distance (integrated from speed)", "unit": "m", "source": "derived (trapezoidal integration)"},
-    "lap_fraction":    {"type": "float", "description": "Progress through current lap [0-1]", "unit": "fraction", "source": "derived (DistanceTracker)"},
+    "lap_fraction":    {"type": "float", "description": "Progress through current lap [0-1]", "unit": "fraction", "source": "SPageFileGraphic.normalizedCarPosition (was derived from distance before Oct 2026)"},
 
     # Wheel / suspension
     "wheel_slip_fl":   {"type": "float", "description": "Wheel slip front-left", "unit": "ratio", "source": "SPageFilePhysics.wheelSlip[0]"},
     "wheel_slip_fr":   {"type": "float", "description": "Wheel slip front-right", "unit": "ratio", "source": "SPageFilePhysics.wheelSlip[1]"},
     "wheel_slip_rl":   {"type": "float", "description": "Wheel slip rear-left", "unit": "ratio", "source": "SPageFilePhysics.wheelSlip[2]"},
     "wheel_slip_rr":   {"type": "float", "description": "Wheel slip rear-right", "unit": "ratio", "source": "SPageFilePhysics.wheelSlip[3]"},
-    "slip_angle_fl":   {"type": "float", "description": "Slip angle front-left (may be zero or absent depending on game/version)", "unit": "rad", "source": "SPageFilePhysics (SLIP_ANGLE_OFFSET - 4 floats)", "optional": True},
-    "slip_angle_fr":   {"type": "float", "description": "Slip angle front-right (may be zero or absent depending on game/version)", "unit": "rad", "source": "SPageFilePhysics (SLIP_ANGLE_OFFSET - 4 floats)", "optional": True},
-    "slip_angle_rl":   {"type": "float", "description": "Slip angle rear-left (may be zero or absent depending on game/version)", "unit": "rad", "source": "SPageFilePhysics (SLIP_ANGLE_OFFSET - 4 floats)", "optional": True},
-    "slip_angle_rr":   {"type": "float", "description": "Slip angle rear-right (may be zero or absent depending on game/version)", "unit": "rad", "source": "SPageFilePhysics (SLIP_ANGLE_OFFSET - 4 floats)", "optional": True},
+    "wheel_slip_valid": {"type": "int", "description": "1 when all wheel slip values are below the cap and speed > 2 km/h", "unit": "bool", "source": "derived (WheelSlipFilter)"},
+    "slip_angle_fl":   {"type": "float", "description": "Slip angle front-left", "unit": "rad", "source": "SPageFilePhysics.slipAngle[0]"},
+    "slip_angle_fr":   {"type": "float", "description": "Slip angle front-right", "unit": "rad", "source": "SPageFilePhysics.slipAngle[1]"},
+    "slip_angle_rl":   {"type": "float", "description": "Slip angle rear-left", "unit": "rad", "source": "SPageFilePhysics.slipAngle[2]"},
+    "slip_angle_rr":   {"type": "float", "description": "Slip angle rear-right", "unit": "rad", "source": "SPageFilePhysics.slipAngle[3]"},
     "suspension_travel_fl": {"type": "float", "description": "Suspension travel front-left", "unit": "m", "source": "SPageFilePhysics.suspensionTravel[0]"},
     "suspension_travel_fr": {"type": "float", "description": "Suspension travel front-right", "unit": "m", "source": "SPageFilePhysics.suspensionTravel[1]"},
     "suspension_travel_rl": {"type": "float", "description": "Suspension travel rear-left", "unit": "m", "source": "SPageFilePhysics.suspensionTravel[2]"},
@@ -325,7 +336,40 @@ FIELD_METADATA = {
 
     # Misc
     "fuel_kg":         {"type": "float", "description": "Fuel remaining", "unit": "kg", "source": "SPageFilePhysics.fuel"},
+
+    # Race context
+    "session_type":    {"type": "string", "description": "practice / qualify / race / ...", "unit": "", "source": "SPageFileGraphic.session (ACC_SESSION_TYPE)"},
+    "status":          {"type": "int", "description": "0 off, 1 replay, 2 live, 3 pause", "unit": "enum", "source": "SPageFileGraphic.status"},
+    "position":        {"type": "int", "description": "Race position", "unit": "rank", "source": "SPageFileGraphic.position"},
+    "lap_time_ms":     {"type": "int", "description": "Current lap time", "unit": "ms", "source": "SPageFileGraphic.iCurrentTime"},
+    "last_lap_ms":     {"type": "int", "description": "Last lap time (official)", "unit": "ms", "source": "SPageFileGraphic.iLastTime"},
+    "best_lap_ms":     {"type": "int", "description": "Best lap time (INT_MAX until set)", "unit": "ms", "source": "SPageFileGraphic.iBestTime"},
+    "is_valid_lap":    {"type": "int", "description": "0 once the current lap is invalidated (track limits)", "unit": "bool", "source": "SPageFileGraphic.isValidLap"},
+    "in_pit_lane":     {"type": "int", "description": "Car is in the pit lane", "unit": "bool", "source": "SPageFileGraphic.isInPitLane"},
+    "flag":            {"type": "int", "description": "Flag shown to the player (7 = green)", "unit": "enum", "source": "SPageFileGraphic.flag (ACC_FLAG_TYPE)"},
+    "green_flag":      {"type": "int", "description": "Global green flag out", "unit": "bool", "source": "SPageFileGraphic.GlobalGreen"},
+    "gap_ahead_ms":    {"type": "int", "description": "Gap to car in front", "unit": "ms", "source": "SPageFileGraphic.gapAhead"},
+    "gap_behind_ms":   {"type": "int", "description": "Gap to car behind (ACC reports it negative)", "unit": "ms", "source": "SPageFileGraphic.gapBehind"},
+    "session_time_left_s": {"type": "float", "description": "Session time remaining", "unit": "s", "source": "SPageFileGraphic.sessionTimeLeft / 1000"},
+    "sector":          {"type": "int", "description": "Current sector index (0-based)", "unit": "index", "source": "SPageFileGraphic.currentSectorIndex"},
+
+    # Track position
+    "pos_x":           {"type": "float", "description": "Player car world X", "unit": "m", "source": "SPageFileGraphic.carCoordinates[player]"},
+    "pos_y":           {"type": "float", "description": "Player car world Y (height)", "unit": "m", "source": "SPageFileGraphic.carCoordinates[player]"},
+    "pos_z":           {"type": "float", "description": "Player car world Z", "unit": "m", "source": "SPageFileGraphic.carCoordinates[player]"},
+    "heading":         {"type": "float", "description": "Car yaw orientation", "unit": "rad", "source": "SPageFilePhysics.heading"},
+    "yaw_rate":        {"type": "float", "description": "Yaw angular velocity (local)", "unit": "rad/s", "source": "SPageFilePhysics.localAngularVel[1]"},
+
+    # Driver aids
+    "tc_active":       {"type": "int", "description": "Traction control intervening", "unit": "bool", "source": "SPageFilePhysics.tcinAction"},
+    "abs_active":      {"type": "int", "description": "ABS intervening", "unit": "bool", "source": "SPageFilePhysics.absInAction"},
+    "tyres_out":       {"type": "int", "description": "Number of tyres outside track limits", "unit": "count", "source": "SPageFilePhysics.numberOfTyresOut"},
 }
+
+for _w, _i in (("fl", 0), ("fr", 1), ("rl", 2), ("rr", 3)):
+    FIELD_METADATA[f"tyre_temp_{_w}"] = {"type": "float", "description": f"Tyre core temp {_w.upper()}", "unit": "°C", "source": f"SPageFilePhysics.tyreCoreTemperature[{_i}]"}
+    FIELD_METADATA[f"tyre_press_{_w}"] = {"type": "float", "description": f"Tyre pressure {_w.upper()}", "unit": "psi", "source": f"SPageFilePhysics.wheelPressure[{_i}]"}
+    FIELD_METADATA[f"brake_temp_{_w}"] = {"type": "float", "description": f"Brake disc temp {_w.upper()}", "unit": "°C", "source": f"SPageFilePhysics.brakeTemp[{_i}]"}
 
 def print_full_schema():
     """Print detailed telemetry schema for human review."""

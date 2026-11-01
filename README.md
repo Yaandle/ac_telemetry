@@ -4,10 +4,47 @@ A Python-based telemetry capture and analysis tool for Assetto Corsa Competizion
 
 ![Project Screenshot](static/screenshot1.png)
 
+## Current workflow (Oct 2026)
+
+Three steps: record a race, make graphs, explore laps in the dashboard.
+
+```bash
+python reader.py                                   # record (start before the race, Ctrl+C after)
+python plot_session.py telemetry_logs/<file>.csv  # PNG graphs -> graphs/<file>/
+```
+
+Then open `dashboard/index.html` in a browser and load the CSV.
+
+| File | Purpose |
+|---|---|
+| `acc_memory.py` | ACC shared memory layouts (physics, graphics, static) as ctypes structs, copied from the v1.8.12 PDF. Fields are read by name. |
+| `reader.py` | 100 Hz logger. 66 columns: inputs, kinematics, race position, gaps, official lap times, valid-lap flag, flags, world coordinates, tyre temps/pressures, brake temps, slip angles, TC/ABS. File name includes the track. |
+| `feature_schema.py` | Column list and metadata for every logged field. |
+| `plot_session.py` | Lap times (invalid laps greyed), speed overlay, delta to best, braking points, best-lap inputs with TC/ABS, G-G, per-lap consistency and fuel, tyres, track map, race story. Old CSVs still work; graphs needing new columns are skipped. |
+| `dashboard/` | Browser dashboard (no install), replacing the Streamlit apps and terminal summary. **Map:** zoomable track with each lap's racing line, line spread (exaggerates sideways differences), click a corner to compare laps, linked speed / line-offset / delta charts. **Race:** lap times, position, gaps ahead/behind, fuel, lap-by-lap table. **Driving:** G-G, braking zones, throttle/brake/steering/gear distributions. **Car:** tyre temps and pressures, brake temps, TC/ABS, wheel slip, suspension. **Data:** session summary, data quality, stats for every channel. Exports the circuit for ML Track Trainer. |
+
+### Racing lines
+
+ACC doesn't publish the track centreline or edges, but it does give each car's world position and its position along the game's track spline (`normalizedCarPosition`). Laps are aligned by that spline position, the **reference line** is the median path of your flying laps, and each lap's line is shown as its sideways offset from it (metres, + = left). The shaded band on the dashboard map is the width your laps actually used.
+
+### Example: 12-minute online race, Mount Panorama (30 Oct 2026)
+
+Started P5 on a rolling start, finished P2. Best lap 2:01.612 (lap 4).
+
+| | |
+|---|---|
+| ![Track map](docs/examples/track_map.png) | ![Race story](docs/examples/race_story.png) |
+| ![Delta to best](docs/examples/delta_to_best.png) | ![Tyres](docs/examples/tyres.png) |
+
+### Linked project
+
+[ML Track Trainer](https://github.com/Yaandle/ML-Track-Trainer) can import a circuit directly from one of these CSVs (or from the dashboard's **Track → ML Trainer** export). `dashboard/acc-csv.js` is shared by both projects; keep the copies identical.
+
+
 
 ## What The System Does (Files)
 
-### 🎮 Data Capture (`telemetry_reader.py`)
+### 🎮 Data Capture (`reader.py`)
 Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 
 **Core Telemetry:**
@@ -21,9 +58,9 @@ Captures real-time telemetry from Assetto Corsa's shared memory at 100Hz:
 - Smoothed control inputs: Moving average filter for noise reduction
 - Real-time session tracking: Automatic lap detection, statistics
 
-**Output:** Timestamped CSV logs with 38 telemetry channels
+**Output:** Timestamped CSV logs with 66 telemetry channels (see `feature_schema.py`)
 
-### 📊 Analytics (`telemetry_analyse_terminal.py / telemetry_analyse_streamlit.py`)
+### 📊 Analytics (`telemetry_analysis_terminal.py / telemetry_analysis_streamlit.py`)
 Analytics tools for ACC telemetry:
 
 **Core Capabilities:**
@@ -33,12 +70,12 @@ Wheel telemetry: Slip, suspension travel analysis
 ML dataset preparation: State-action pairs, normalised datasets, temporal sequences
 
 **Differences:**
-telemetry_analyse_terminal.py – CLI-first, textual summaries, fast iteration
-telemetry_analyse_streamlit.py – Web-based, interactive charts and sliders
+telemetry_analysis_terminal.py – CLI-first, textual summaries, fast iteration
+telemetry_analysis_streamlit.py – Web-based, interactive charts and sliders
 
 **Shared Foundation:**
 Both use feature_schema.py for consistent feature definitions
-Both consume CSV data produced by telemetry_reader.py
+Both consume CSV data produced by reader.py
 Differences limited to interface and visualisation
 
 
@@ -171,7 +208,7 @@ pip install vgamepad
 Start Assetto Corsa Competizione, then run:
 
 ```bash
-python telemetry_reader.py
+python reader.py
 ```
 
 **What happens:**
@@ -214,7 +251,7 @@ python telemetry_analysis_streamlit.py
 **Prepare ML datasets:**
 🤖 ML datasets: `ml_data/` directory with normalized features
 ```bash
-python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
+python telemetry_analysis_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
 ```
 This creates ALL datasets needed for training:
 - ml_data/X_states.npy                     (frame-by-frame for Linear / MLP)
@@ -262,7 +299,7 @@ Generated once, reused everywhere:
 ### 🏁 Performance Analysis
 ```bash
 # Capture practice session
-python telemetry_reader.py
+python reader.py
 
 # Analyze lap times and consistency
 python telemetry_analysis.py session.csv 
@@ -271,7 +308,7 @@ python telemetry_analysis.py session.csv
 ### 🤖 ML Experiment
 ```bash
 # 1. Capture training data (30+ laps recommended)
-python telemetry_reader.py
+python reader.py
 
 # 2. Prepare datasets
 python telemetry_analysis.py session.csv --ml
@@ -309,7 +346,7 @@ python telemetry_analysis.py combined.csv --ml --plots
 
 ```
 ac_telemetry/
-├── telemetry_reader.py       # Real-time data capture (100Hz)
+├── reader.py       # Real-time data capture (100Hz)
 ├── telemetry_analysis_terminal.py       # Analytics + ML dataset prep
 ├── telemetry_analysis_streamlit.py      # Streamlit UI
 ├── driver.py                 # Real-time driving control
@@ -352,7 +389,7 @@ The goal is completion, iteration, and system understanding over novelty.
 - Fully working and documented
 
 **Outcome:**  
-`telemetry_reader.py` captures live ACC telemetry at **100 Hz** and logs structured CSV data.
+`reader.py` captures live ACC telemetry at **100 Hz** and logs structured CSV data.
 
 ---
 
@@ -366,8 +403,8 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 - Learn what matters vs. what doesn't
 
 **Outcome:**            
-`telemetry_analyse_streamlit.py` provides UI visualisations and analytics;         
-`telemetry_analyse_terminal.py` provides CLI-based analytics and ML dataset preparation.
+`telemetry_analysis_streamlit.py` provides UI visualisations and analytics;         
+`telemetry_analysis_terminal.py` provides CLI-based analytics and ML dataset preparation.
 
 ---
 

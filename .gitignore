@@ -1,0 +1,18 @@
+# Environment / caches
+ac_telemtry_venv/
+ac_telemetry_venv/
+__pycache__/
+*.pyc
+.claude/
+
+# Recorded and generated data (large; kept locally)
+telemetry_logs/
+ml_data/
+ml_results/
+training_logs/
+graphs/
+*.csv
+*.ods
+*.npy
+*.pkl
+*.pt
