@@ -361,8 +361,8 @@ FIELD_METADATA = {
     "yaw_rate":        {"type": "float", "description": "Yaw angular velocity (local)", "unit": "rad/s", "source": "SPageFilePhysics.localAngularVel[1]"},
 
     # Driver aids
-    "tc_active":       {"type": "int", "description": "Traction control intervening", "unit": "bool", "source": "SPageFilePhysics.tcinAction"},
-    "abs_active":      {"type": "int", "description": "ABS intervening", "unit": "bool", "source": "SPageFilePhysics.absInAction"},
+    "tc_active":       {"type": "int", "description": "Traction control intervening", "unit": "bool", "source": "SPageFilePhysics.tc (float) or tcinAction"},
+    "abs_active":      {"type": "int", "description": "ABS intervening", "unit": "bool", "source": "SPageFilePhysics.abs (float) or absInAction"},
     "tyres_out":       {"type": "int", "description": "Number of tyres outside track limits", "unit": "count", "source": "SPageFilePhysics.numberOfTyresOut"},
 }
 

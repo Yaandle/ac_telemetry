@@ -342,8 +342,9 @@ class ACTelemetryReader:
                 brake_temp_rl=p.brakeTemp[2], brake_temp_rr=p.brakeTemp[3],
                 slip_angle_fl=p.slipAngle[0], slip_angle_fr=p.slipAngle[1],
                 slip_angle_rl=p.slipAngle[2], slip_angle_rr=p.slipAngle[3],
-                tc_active=p.tcinAction,
-                abs_active=p.absInAction,
+                # ACC fills the float tc/abs fields; the int tcinAction/absInAction stay 0
+                tc_active=int(p.tc > 0.0 or p.tcinAction > 0),
+                abs_active=int(p.abs > 0.0 or p.absInAction > 0),
                 tyres_out=p.numberOfTyresOut,
             )
 
