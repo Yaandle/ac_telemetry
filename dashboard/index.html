@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ACC Telemetry · Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+
+<aside class="panel">
+  <header>
+    <h1>ACC Telemetry</h1>
+    <p class="meta">Session analysis · racing lines</p>
+  </header>
+
+  <section>
+    <h2><span>01</span> / Session</h2>
+    <div class="btns">
+      <label class="file">Open CSV<input id="file" type="file" accept=".csv"></label>
+    </div>
+    <p class="muted note" id="file-name">No session loaded · or drop a CSV anywhere</p>
+    <dl class="kv" style="margin-top:12px">
+      <dt>Track</dt><dd id="s-track">—</dd>
+      <dt>Session</dt><dd id="s-type">—</dd>
+      <dt>Lap length</dt><dd id="s-len">—</dd>
+      <dt>Laps</dt><dd id="s-laps">—</dd>
+      <dt>Finish</dt><dd id="s-pos">—</dd>
+    </dl>
+    <span class="label">Best lap</span>
+    <strong class="big" id="s-best">—</strong>
+  </section>
+
+  <section>
+    <h2><span>02</span> / Laps</h2>
+    <table>
+      <thead><tr><th>Lap</th><th>Time</th><th>Δ best</th><th>Pos</th></tr></thead>
+      <tbody id="laps"></tbody>
+    </table>
+    <p class="muted note">Click a lap to show or hide it. ✗ = invalid (track limits).</p>
+  </section>
+
+  <section>
+    <h2><span>03</span> / Map</h2>
+    <label class="label" for="colour">Colour lines by</label>
+    <select id="colour">
+      <option value="lap">Lap</option>
+      <option value="speed">Speed</option>
+      <option value="pedal">Pedals</option>
+    </select>
+    <div class="legend hidden" id="legend"><span id="leg-lo"></span><i id="leg-bar"></i><span id="leg-hi"></span></div>
+    <label class="label" for="spread">Line spread <b id="spread-v">×1</b></label>
+    <input id="spread" type="range" min="1" max="25" step="1" value="1" style="width:100%">
+    <p class="muted note" style="margin-top:2px">Exaggerates each lap's sideways offset so lines that sit within a metre of each other separate when zoomed out. ×1 = true position.</p>
+    <label class="check"><input type="checkbox" id="show-ref" checked> Reference line (median of flying laps)</label>
+    <label class="check"><input type="checkbox" id="show-road" checked> Used track width</label>
+  </section>
+
+  <section>
+    <h2><span>04</span> / Selected point</h2>
+    <p class="muted" id="pt-where">Click the map or a chart to inspect a point.</p>
+    <table class="hidden" id="pt-table">
+      <thead><tr><th>Lap</th><th>km/h</th><th>Gear</th><th>Line m</th><th>Δ s</th></tr></thead>
+      <tbody id="pt-rows"></tbody>
+    </table>
+    <p class="muted note">Line m: sideways offset from the reference line, + = left.</p>
+  </section>
+
+  <section>
+    <h2><span>05</span> / Export</h2>
+    <div class="btns"><button id="export" type="button" disabled>Track → ML Trainer</button></div>
+    <p class="muted note">Saves this circuit (the reference line) as a track file for ML Track Trainer's Import track button.</p>
+  </section>
+</aside>
+
+<main class="view">
+  <div class="bar-t">
+    <b id="track-name">—</b>
+    <nav class="tabs" id="tabs">
+      <button type="button" data-view="map" class="on">Map</button>
+      <button type="button" data-view="race">Race</button>
+      <button type="button" data-view="driving">Driving</button>
+      <button type="button" data-view="car">Car</button>
+      <button type="button" data-view="data">Data</button>
+    </nav>
+    <span class="sp map-only">Scroll zoom · drag pan · click inspect · double-click zoom</span>
+    <button id="reset" type="button" class="map-only">Reset view</button>
+  </div>
+
+  <div class="view-body" id="v-map">
+    <svg id="map" aria-label="Track map with racing lines"></svg>
+    <div class="charts">
+      <svg id="c-speed" class="ch" aria-label="Speed by distance"></svg>
+      <svg id="c-line" class="ch" aria-label="Line offset by distance"></svg>
+      <svg id="c-delta" class="ch" aria-label="Time delta to best lap"></svg>
+    </div>
+  </div>
+
+  <div class="view-body cards hidden" id="v-race">
+    <div class="card"><h2>Lap times</h2><svg id="r-laps" class="ch"></svg></div>
+    <div class="card"><h2>Race story · position</h2><svg id="r-pos" class="ch"></svg></div>
+    <div class="card"><h2>Gaps to cars ahead / behind (s)</h2><svg id="r-gap" class="ch"></svg></div>
+    <div class="card"><h2>Fuel remaining (kg)</h2><svg id="r-fuel" class="ch"></svg></div>
+    <div class="card wide"><h2>Lap by lap</h2><div class="scroll"><table id="r-table"></table></div></div>
+  </div>
+
+  <div class="view-body cards hidden" id="v-driving">
+    <div class="card"><h2>G-G diagram · selected laps</h2><svg id="d-gg" class="ch square"></svg></div>
+    <div class="card"><h2>Braking zones · brake point spread</h2><div class="scroll"><table id="d-brake"></table></div></div>
+    <div class="card"><h2>Throttle position · time share</h2><svg id="d-gas" class="ch"></svg></div>
+    <div class="card"><h2>Brake pressure · time share</h2><svg id="d-brk" class="ch"></svg></div>
+    <div class="card"><h2>Steering · time share</h2><svg id="d-steer" class="ch"></svg></div>
+    <div class="card"><h2>Gear usage · time share</h2><svg id="d-gear" class="ch"></svg></div>
+  </div>
+
+  <div class="view-body cards hidden" id="v-car">
+    <div class="card"><h2>Tyre core temp (°C) · lap mean</h2><svg id="k-ttemp" class="ch"></svg></div>
+    <div class="card"><h2>Tyre pressure (psi) · lap mean</h2><svg id="k-press" class="ch"></svg></div>
+    <div class="card"><h2>Brake disc temp (°C) · lap mean</h2><svg id="k-btemp" class="ch"></svg></div>
+    <div class="card"><h2>TC / ABS active · % of lap</h2><svg id="k-aids" class="ch"></svg></div>
+    <div class="card"><h2>Wheel slip · median by corner</h2><svg id="k-slip" class="ch"></svg></div>
+    <div class="card"><h2>Suspension travel (mm) · median by corner</h2><svg id="k-susp" class="ch"></svg></div>
+  </div>
+
+  <div class="view-body cards hidden" id="v-data">
+    <div class="card"><h2>Session summary</h2><dl class="kv" id="x-summary"></dl></div>
+    <div class="card"><h2>Data quality</h2><dl class="kv" id="x-quality"></dl></div>
+    <div class="card wide"><h2>All channels</h2><div class="scroll"><table id="x-cols"></table></div></div>
+  </div>
+
+  <div class="bar-b">
+    <span>Distance <b id="b-dist">—</b></span>
+    <span>Window <b id="b-win">Full lap</b></span>
+    <span class="sp" id="b-info"></span>
+  </div>
+
+  <div class="empty" id="empty"><div><b>Open a session</b>Load a CSV from telemetry_logs/ recorded with reader.py</div></div>
+</main>
+
+<script src="acc-csv.js"></script>
+<script src="dashboard.js"></script>
+<script src="views.js"></script>
+</body>
+</html>

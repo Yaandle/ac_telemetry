@@ -1,24 +1,52 @@
-import duckdb
 import pandas as pd
+import sys
 
-csv_path = "     "      # Add path to your data
-con = duckdb.connect()
+# Remove first and last laps from the CSV file
+def clean_laps(csv_file):
+    df = pd.read_csv(csv_file)
+    if "current_lap" not in df.columns:
+        raise ValueError("CSV missing 'current_lap' column")
+    min_lap, max_lap = df["current_lap"].min(), df["current_lap"].max()
+    df = df[(df["current_lap"] != min_lap) & (df["current_lap"] != max_lap)]
+    df.to_csv(csv_file, index=False)
+    print(f"[CLEAN] {csv_file}: removed laps {min_lap} & {max_lap}")
 
-# Fetch all laps without row_num
-query = f"""
-SELECT 
-    current_lap,
-    CAST(gas AS DOUBLE) AS gas,
-    CAST(brake AS DOUBLE) AS brake
-FROM read_csv_auto('{csv_path}', header=True)
-ORDER BY current_lap, lap_time_sec
-"""
-df = con.execute(query).fetchdf()
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python clean_laps.py <csv_file>")
+    else:
+        clean_laps(sys.argv[1])
 
-# Optional: round for readability
-df['gas'] = df['gas'].round(3)
-df['brake'] = df['brake'].round(3)
 
-# Export to CSV 
-df.to_csv("lap_gas_brake.csv", index=False)
-con.close()
+def export_gas_steer(csv_file, output_file=None):
+    """
+    Export only the 'gas' and 'steer' columns from a CSV.
+    Optionally save to a new CSV file.
+    """
+    # Read the CSV
+    df = pd.read_csv(csv_file)
+
+    # Check required columns
+    required_cols = ["gas", "steer"]
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"CSV missing '{col}' column")
+
+    # Keep only gas and steer
+    df_export = df[required_cols]
+
+    # Default output filename
+    if output_file is None:
+        output_file = csv_file.replace(".csv", "_gas_steer.csv")
+
+    # Save to CSV
+    df_export.to_csv(output_file, index=False)
+    print(f"[EXPORT] Saved gas and steer to {output_file}")
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
+        print("Usage: python export_gas_steer.py <csv_file> [output_file]")
+    else:
+        csv_file = sys.argv[1]
+        output_file = sys.argv[2] if len(sys.argv) == 3 else None
+        export_gas_steer(csv_file, output_file)
