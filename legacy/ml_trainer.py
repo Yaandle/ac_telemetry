@@ -26,6 +26,7 @@ matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 
 # Import feature schema
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root: feature_schema.py lives there
 try:
     from feature_schema import (
         POLICY_FEATURES, ACTION_LABELS,

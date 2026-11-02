@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root: feature_schema.py lives there
 try:
     from feature_schema import POLICY_FEATURES, build_state_from_memory, validate_state
 except ImportError:

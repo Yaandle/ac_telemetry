@@ -16,3 +16,13 @@ graphs/
 *.npy
 *.pkl
 *.pt
+
+# Third-party docs (Kunos ACC shared memory PDF; link to it instead of redistributing)
+ACCSharedMemoryDocumentationV1.8.12.pdf
+
+# Local experiments, not part of the published system
+driver3.py
+record2.py
+
+# One-off scratch scripts
+convert.py

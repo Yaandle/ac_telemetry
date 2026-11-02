@@ -32,7 +32,14 @@
     const nGrid = Math.floor(info.lapMeters / GRID_M);
     for (const lap in traces) {
       offsets[lap] = AccCsv.offsets(traces[lap], ref);
-      traces[lap].forEach((p, k) => { p.off = offsets[lap][k]; });
+      const o = offsets[lap], m = o.length;
+      traces[lap].forEach((p, k) => {
+        p.off = o[k];
+        // ±5 samples (~±5 m at speed) moving average: used only when the spread exaggerates offsets
+        let s = 0, c = 0;
+        for (let j = Math.max(0, k - 5); j <= Math.min(m - 1, k + 5); j++) { s += o[j]; c++; }
+        p.offS = s / c;
+      });
       const g = new Float64Array(nGrid);
       for (let k = 0; k < nGrid; k++) g[k] = AccCsv.sampleAt(traces[lap], k * GRID_M, 't');
       timeGrid[lap] = g;
@@ -146,11 +153,20 @@
 
   const pathOf = (pts, close) => 'M' + pts.map((p) => p.x.toFixed(1) + ' ' + p.y.toFixed(1)).join('L') + (close ? 'Z' : '');
 
+  // Exaggerated offset, kept inside each corner's radius so lines can't fold over on the inside
+  function spreadOffset(r, o) {
+    const v = o * S.spread;
+    if (v * r.curv > 0) {
+      const lim = 0.7 / Math.abs(r.curv);
+      return Math.sign(v) * Math.min(Math.abs(v), lim);
+    }
+    return v;
+  }
+
   // Where a lap point is drawn: its real position, or with the sideways offset exaggerated by S.spread
   function shown(p) {
     if (!S.spread || S.spread === 1) return p;
-    const step = S.ref[1].d, k = Math.max(0, Math.min(S.ref.length - 1, Math.round(p.d / step))), r = S.ref[k];
-    const o = p.off * S.spread;
+    const r = AccCsv.refAt(S.ref, p.k), o = spreadOffset(r, p.offS);
     return { x: r.x + r.nx * o, y: r.y + r.ny * o };
   }
 
@@ -164,17 +180,23 @@
     const step = ref[1].d;
     for (const lap of S.info.list.filter((L) => L.flying).map((L) => L.lap)) {
       S.traces[lap].forEach((p) => {
-        const k = Math.round(p.d / step);
-        if (k < 0 || k >= n || Math.abs(p.off) > 25) return;
-        lo[k] = Math.min(lo[k], p.off); hi[k] = Math.max(hi[k], p.off);
+        const k = Math.round(p.k) % n;
+        if (Math.abs(p.offS) > 25) return;
+        lo[k] = Math.min(lo[k], p.offS); hi[k] = Math.max(hi[k], p.offS);
       });
     }
+    // Rolling max/min (±12 m) for the envelope, then a rolling mean (±12 m) so the edges are smooth
     const sm = (a, f) => Array.from(a, (_, k) => {
       let v = a[k];
       for (let j = -6; j <= 6; j++) v = f(v, a[(k + j + n) % n]);
       return v;
     });
-    const L = sm(hi, Math.max).map((v) => v + 1.0), R = sm(lo, Math.min).map((v) => v - 1.0);
+    const mean = (a) => Array.from(a, (_, k) => {
+      let s = 0;
+      for (let j = -6; j <= 6; j++) s += a[(k + j + n) % n];
+      return s / 13;
+    });
+    const L = mean(sm(hi, Math.max)).map((v) => v + 1.0), R = mean(sm(lo, Math.min)).map((v) => v - 1.0);
     S.band = { L, R };
     S.roadGroup = el('g', {}, world);
     drawRoad();
@@ -206,9 +228,10 @@
 
   // Used-width band around the reference line, widened with the line spread
   function drawRoad() {
-    const sp = S.spread || 1, { L, R } = S.band;
-    const left = S.ref.map((r, k) => ({ x: r.x + r.nx * L[k] * sp, y: r.y + r.ny * L[k] * sp }));
-    const right = S.ref.map((r, k) => ({ x: r.x + r.nx * R[k] * sp, y: r.y + r.ny * R[k] * sp }));
+    const { L, R } = S.band;
+    const edge = (r, o) => (S.spread > 1 ? spreadOffset(r, o) : o);
+    const left = S.ref.map((r, k) => { const o = edge(r, L[k]); return { x: r.x + r.nx * o, y: r.y + r.ny * o }; });
+    const right = S.ref.map((r, k) => { const o = edge(r, R[k]); return { x: r.x + r.nx * o, y: r.y + r.ny * o }; });
     S.roadGroup.innerHTML = '';
     el('path', { class: 'road', d: pathOf(left, true) + pathOf(right, true) }, S.roadGroup);
     el('path', { class: 'edge', d: pathOf(left, true) }, S.roadGroup);
@@ -349,13 +372,15 @@
     cursorG.innerHTML = '';
     if (S.cursor === null) return;
     const step = S.ref[1].d, k = Math.min(S.ref.length - 1, Math.round(S.cursor / step)), r = S.ref[k];
-    const sp = S.spread || 1, L = S.band.L[k] * sp + 3, R = S.band.R[k] * sp - 3;
+    const edge = (o) => (S.spread > 1 ? spreadOffset(r, o) : o);
+    const L = edge(S.band.L[k]) + 3, R = edge(S.band.R[k]) - 3;
     el('line', { class: 'cut', x1: r.x + r.nx * L, y1: r.y + r.ny * L, x2: r.x + r.nx * R, y2: r.y + r.ny * R }, cursorG);
     const rad = view.w / 260;
     S.selected.forEach((lap) => {
       const pts = S.traces[lap];
-      const at = shown({ d: S.cursor, off: AccCsv.sampleAt(pts, S.cursor, 'off'),
-                         x: AccCsv.sampleAt(pts, S.cursor, 'x'), y: AccCsv.sampleAt(pts, S.cursor, 'y') });
+      const at = S.spread > 1
+        ? (() => { const o = spreadOffset(r, AccCsv.sampleAt(pts, S.cursor, 'offS')); return { x: r.x + r.nx * o, y: r.y + r.ny * o }; })()
+        : { x: AccCsv.sampleAt(pts, S.cursor, 'x'), y: AccCsv.sampleAt(pts, S.cursor, 'y') };
       el('circle', { class: 'pin', r: rad, fill: S.colours[lap], cx: at.x, cy: at.y }, cursorG);
     });
   }

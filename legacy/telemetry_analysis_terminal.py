@@ -13,6 +13,7 @@ import argparse
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root: feature_schema.py lives there
 from feature_schema import SEQUENCE_LENGTH, STRIDE
 try:
     import duckdb

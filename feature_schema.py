@@ -303,8 +303,8 @@ FIELD_METADATA = {
     "vx":              {"type": "float", "description": "Velocity X (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[0]"},
     "vy":              {"type": "float", "description": "Velocity Y (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[1]"},
     "vz":              {"type": "float", "description": "Velocity Z (local)", "unit": "m/s", "source": "SPageFilePhysics.velocity[2]"},
-    "accel_longitudinal": {"type": "float", "description": "Longitudinal acceleration", "unit": "G", "source": "SPageFilePhysics.accG[0]"},
-    "accel_lateral":   {"type": "float", "description": "Lateral acceleration", "unit": "G", "source": "SPageFilePhysics.accG[2]"},
+    "accel_longitudinal": {"type": "float", "description": "Longitudinal acceleration", "unit": "G", "source": "SPageFilePhysics.accG[2]"},
+    "accel_lateral":   {"type": "float", "description": "Lateral acceleration", "unit": "G", "source": "SPageFilePhysics.accG[0]"},
 
     # Controls (raw + smoothed)
     "gas":             {"type": "float", "description": "Throttle input", "unit": "[0-1]", "source": "SPageFilePhysics.gas"},
@@ -361,8 +361,8 @@ FIELD_METADATA = {
     "yaw_rate":        {"type": "float", "description": "Yaw angular velocity (local)", "unit": "rad/s", "source": "SPageFilePhysics.localAngularVel[1]"},
 
     # Driver aids
-    "tc_active":       {"type": "int", "description": "Traction control intervening", "unit": "bool", "source": "SPageFilePhysics.tcinAction"},
-    "abs_active":      {"type": "int", "description": "ABS intervening", "unit": "bool", "source": "SPageFilePhysics.absInAction"},
+    "tc_active":       {"type": "int", "description": "Traction control intervening", "unit": "bool", "source": "SPageFilePhysics.tc (float) or tcinAction"},
+    "abs_active":      {"type": "int", "description": "ABS intervening", "unit": "bool", "source": "SPageFilePhysics.abs (float) or absInAction"},
     "tyres_out":       {"type": "int", "description": "Number of tyres outside track limits", "unit": "count", "source": "SPageFilePhysics.numberOfTyresOut"},
 }
 
