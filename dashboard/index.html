@@ -88,11 +88,21 @@
   </div>
 
   <div class="view-body" id="v-map">
-    <svg id="map" aria-label="Track map with racing lines"></svg>
-    <div class="charts">
-      <svg id="c-speed" class="ch" aria-label="Speed by distance"></svg>
-      <svg id="c-line" class="ch" aria-label="Line offset by distance"></svg>
-      <svg id="c-delta" class="ch" aria-label="Time delta to best lap"></svg>
+    <div class="map-top">
+      <svg id="map" aria-label="Track map with racing lines"></svg>
+      <div class="charts">
+        <svg id="c-speed" class="ch" aria-label="Speed by distance"></svg>
+        <svg id="c-line" class="ch" aria-label="Line offset by distance"></svg>
+        <svg id="c-delta" class="ch" aria-label="Time delta to best lap"></svg>
+      </div>
+    </div>
+    <div class="cards more">
+      <div class="card"><h2>Track map · speed <span id="m-best-a"></span></h2><svg id="m-tm-speed" class="tmap"></svg>
+        <div class="legend"><span id="m-sp-lo"></span><i id="m-sp-bar"></i><span id="m-sp-hi"></span></div></div>
+      <div class="card"><h2>Track map · pedals <span id="m-best-b"></span></h2><svg id="m-tm-pedal" class="tmap"></svg>
+        <div class="legend"><span>Brake</span><i id="m-pd-bar"></i><span>Throttle</span></div></div>
+      <div class="card wide"><h2>Speed trace by lap · flying laps (km/h)</h2><svg id="m-speed" class="ch"></svg></div>
+      <div class="card wide"><h2>Time delta to best lap · flying laps (+ = slower)</h2><svg id="m-delta" class="ch"></svg></div>
     </div>
   </div>
 
@@ -111,6 +121,24 @@
     <div class="card"><h2>Brake pressure · time share</h2><svg id="d-brk" class="ch"></svg></div>
     <div class="card"><h2>Steering · time share</h2><svg id="d-steer" class="ch"></svg></div>
     <div class="card"><h2>Gear usage · time share</h2><svg id="d-gear" class="ch"></svg></div>
+    <div class="card wide"><h2>Best lap inputs <span id="d-in-lap"></span></h2>
+      <svg id="d-in-speed" class="ch in" aria-label="Speed"></svg>
+      <svg id="d-in-pedal" class="ch in" aria-label="Throttle and brake"></svg>
+      <svg id="d-in-steer" class="ch in" aria-label="Steering"></svg>
+      <svg id="d-in-gear" class="ch in short" aria-label="Gear"></svg>
+      <div class="legend keys"><span><b style="background:#7fc480"></b>Throttle</span><span><b style="background:#e07a6e"></b>Brake</span>
+        <span><b style="background:rgba(142,91,181,.25)"></b>TC active</span><span><b style="background:rgba(199,154,30,.3)"></b>ABS active</span></div>
+    </div>
+    <div class="card wide"><h2>Lap-by-lap consistency · complete laps</h2>
+      <div class="mini">
+        <div><span class="label">Avg speed (km/h)</span><svg id="d-cs-avg" class="ch"></svg></div>
+        <div><span class="label">Full throttle (% of time)</span><svg id="d-cs-ft" class="ch"></svg></div>
+        <div><span class="label">Braking (% of time)</span><svg id="d-cs-br" class="ch"></svg></div>
+        <div><span class="label">Coasting (% of time)</span><svg id="d-cs-co" class="ch"></svg></div>
+        <div><span class="label">Throttle + brake overlap (%)</span><svg id="d-cs-ov" class="ch"></svg></div>
+        <div><span class="label">Fuel used (kg)</span><svg id="d-cs-fuel" class="ch"></svg></div>
+      </div>
+    </div>
   </div>
 
   <div class="view-body cards hidden" id="v-car">

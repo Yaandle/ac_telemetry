@@ -48,7 +48,20 @@ select { font: inherit; color: var(--ink); background: none; border: 1px solid v
 
 .view { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; position: relative; }
 .view-body { min-height: 0; min-width: 0; }
-#v-map { display: grid; grid-template-rows: minmax(0, 1fr) 300px; }
+#v-map { overflow-y: auto; }
+/* Map + linked charts fill the view; the full-lap cards sit below it, one scroll away */
+.map-top { height: 100%; min-height: 520px; display: grid; grid-template-rows: minmax(0, 1fr) 300px; }
+.cards.more { overflow: visible; border-top: 1px solid var(--ink); }
+.card .tmap { width: 100%; height: 360px; display: block; }
+.tmap path { fill: none; stroke-width: 3px; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tmap .sf { stroke-width: 3px; }
+.card .ch.in { height: 130px; }
+.card .ch.in.short { height: 100px; }
+.mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 18px; }
+.mini .label { margin: 4px 0 0; }
+.mini .ch { width: 100%; height: 160px; display: block; }
+.legend.keys { gap: 16px; }
+.legend.keys b { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
 .tabs { display: flex; gap: 0; }
 .tabs button { border-right-width: 0; }
 .tabs button:last-child { border-right-width: 1px; }
@@ -107,6 +120,7 @@ body.drop .empty { background: rgba(181, 82, 43, .08); }
   .panel { border-right: 0; border-bottom: 1px solid var(--ink); overflow: visible; }
   .view { height: 140vh; }
   .cards { grid-template-columns: 1fr; }
+  .mini { grid-template-columns: 1fr 1fr; }
   .card { border-right: 0; }
   .bar-t { flex-wrap: wrap; }
 }

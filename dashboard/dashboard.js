@@ -371,7 +371,7 @@
 
   /* ---------- cursor (selected point) ---------- */
 
-  function setCursor(d) { S.cursor = d; renderCursor(); renderCharts(); renderPoint(); }
+  function setCursor(d) { S.cursor = d; renderCursor(); renderCharts(); renderPoint(); AccDash.hooks.forEach((f) => f('cursor')); }
 
   function renderCursor() {
     if (!cursorG) return;
@@ -438,6 +438,14 @@
     const Y = (y) => m.t + (hi - y) / (hi - lo) * (H - m.t - m.b);
     el('line', { class: 'ax', x1: m.l, y1: m.t, x2: m.l, y2: H - m.b }, svgEl);
     const tt = el('text', { class: 'title', x: m.l + 6, y: 11 }, svgEl); tt.textContent = title;
+    if (opts && opts.legend) {
+      let lx = m.l + 18 + tt.getComputedTextLength();
+      series.filter((s) => s.label).forEach((s) => {
+        el('rect', { x: lx, y: 3, width: 8, height: 8, fill: s.colour, stroke: 'none' }, svgEl);
+        const t = el('text', { x: lx + 12, y: 11 }, svgEl); t.textContent = s.label;
+        lx += 20 + t.getComputedTextLength();
+      });
+    }
     [hi - pad, lo + pad].forEach((v) => {
       const t = el('text', { x: m.l - 6, y: Y(v) + 3, 'text-anchor': 'end' }, svgEl);
       t.textContent = (Math.abs(v) >= 10 ? v.toFixed(0) : v.toFixed(1)) + unit;
@@ -469,8 +477,9 @@
     chart($('c-speed'), 'Speed', '', mk('speed'), win);
     chart($('c-line'), 'Line · offset from reference (+ left)', ' m', mk('off'), win, { zero: true });
     const delta = laps.map((lap) => ({ colour: S.colours[lap], width: lap === S.info.best ? 1.8 : 1.2,
+      label: 'L' + lap + (lap === S.info.best ? ' best' : ''),
       pts: Array.from(S.timeGrid[lap], (t, k) => [k * GRID_M, t - S.timeGrid[S.info.best][k]]) }));
-    chart($('c-delta'), 'Delta to best (+ slower)', ' s', delta, win, { zero: true });
+    chart($('c-delta'), 'Delta to best (+ slower)', ' s', delta, win, { zero: true, legend: true });
   }
 
   function renderAll() {
@@ -485,5 +494,6 @@
   }
 
   // Shared with views.js: session state, helpers, and render hooks (called after every change)
-  window.AccDash = { state: S, fmtLap, hooks: [], refreshMap: () => S.ref && applyView() };
+  window.AccDash = { state: S, fmtLap, hooks: [], refreshMap: () => S.ref && applyView(),
+                     speedColour, setCursor, GRID_M };
 })();
