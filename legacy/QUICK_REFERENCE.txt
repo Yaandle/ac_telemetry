@@ -1,0 +1,298 @@
+#!/usr/bin/env python3
+"""
+UPDATED QUICK REFERENCE - Simplified Training Workflow
+"""
+
+"""
+================================================================================
+SIMPLIFIED WORKFLOW (2-Step Process)
+================================================================================
+
+✅ WHAT YOU HAVE:
+   - telemetry_logs/run2/acc_session_combined_2.csv (your session data)
+   - feature_schema.py (feature definitions)
+   - telemetry_analyse_terminal.py (prepares ALL datasets)
+   - ml_trainer.py (trains ALL models with flags)
+   - policies/ (all policies to test)
+
+
+================================================================================
+COMPLETE TRAINING PROCEDURE (Copy & Paste)
+================================================================================
+
+STEP 1: Prepare ALL datasets from your CSV (ONE TIME)
+────────────────────────────────────────────────────────────────────────────
+
+python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
+
+This creates ALL datasets needed for training:
+  ✅ ml_data/X_states.npy                      (frame-by-frame for LR/MLP)
+  ✅ ml_data/y_actions.npy
+  ✅ ml_data/X_states_normalized.npy
+  ✅ ml_data/normalization_min.npy
+  ✅ ml_data/normalization_max.npy
+  ✅ ml_data/X_sequences.npy                   (sequences for LSTM - future)
+  ✅ ml_data/X_sequences_normalized.npy
+  ✅ ml_data/y_sequences.npy
+  ✅ ml_data/episodes_states.npy               (episodes for GA)
+  ✅ ml_data/episodes_actions.npy
+  ✅ ml_data/episodes_states_normalized.npy
+  ✅ ml_data/episode_lengths.npy
+  ✅ ml_data/dql_transitions.npy               (transitions for DQL)
+  ✅ ml_data/feature_names.txt                 (documentation)
+
+
+STEP 2: Train Models (Pick what you want)
+────────────────────────────────────────────────────────────────────────────
+
+Option A: Train EVERYTHING (default)
+─────────────────────────────────────
+python ml_trainer.py --all
+
+Creates:
+  ✅ ml_results/linear_regression_*.pkl        (Linear baseline)
+  ✅ ml_results/mlp_64_32_*.pkl                (MLP: 64-32)
+  ✅ ml_results/mlp_128_64_32_*.pkl            (MLP: 128-64-32)
+  ✅ ml_results/mlp_256_128_64_*.pkl           (MLP: 256-128-64)
+  ✅ ml_results/ga_model.pkl                   (Genetic Algorithm)
+  ✅ ml_results/dql_model.pt                   (Deep Q-Learning)
+  ✅ ml_results/*.png                          (Visualizations)
+  ✅ ml_results/training_report.txt
+
+
+Option B: Train ONLY supervised learning (Linear + MLP)
+────────────────────────────────────────────────────────
+python ml_trainer.py --lr --mlp
+
+Creates:
+  ✅ ml_results/linear_regression_*.pkl
+  ✅ ml_results/mlp_*_*.pkl
+  ✅ Comparison plots and metrics
+
+
+Option C: Train ONLY Genetic Algorithm
+───────────────────────────────────────
+python ml_trainer.py --ga
+
+Creates:
+  ✅ ml_results/ga_model.pkl
+  ✅ ml_results/ga_fitness_history.png
+
+
+Option D: Train ONLY Deep Q-Learning
+─────────────────────────────────────
+python ml_trainer.py --dql
+
+Creates:
+  ✅ ml_results/dql_model.pt
+  ✅ ml_results/dql_loss_history.png
+
+
+Option E: Mix and match
+────────────────────────
+python ml_trainer.py --mlp --ga          # MLP + GA only
+python ml_trainer.py --lr --dql          # Linear + DQL only
+
+
+================================================================================
+WHAT EACH FLAG DOES
+================================================================================
+
+--lr        Train Linear Regression (baseline)
+--mlp       Train 3 MLP architectures (64-32, 128-64-32, 256-128-64)
+--ga        Train Genetic Algorithm on episode data
+--dql       Train Deep Q-Learning on transitions
+--all       Train everything (default if no flags given)
+
+
+================================================================================
+WHY THIS IS BETTER
+================================================================================
+
+OLD WAY (3 separate scripts):
+  1. python telemetry_analyse_terminal.py --ml
+  2. python ml_trainer.py
+  3. python train/train_ga.py
+  4. python train/train_dql.py
+  
+  Problem: Had to run 4 separate commands, datasets generated 3 times
+
+NEW WAY (2 scripts):
+  1. python telemetry_analyse_terminal.py --ml    (prepare ALL datasets ONCE)
+  2. python ml_trainer.py --all                   (train ALL models)
+  
+  Benefits:
+  ✅ Datasets prepared only once
+  ✅ All models use SAME normalization
+  ✅ Single command to train everything
+  ✅ Or train specific models with flags
+
+
+================================================================================
+TRAINING EXPERIMENTS
+================================================================================
+
+You can still test different configurations, but now it's simpler:
+
+Experiment 1: Compare MLP architectures
+────────────────────────────────────────
+python ml_trainer.py --mlp
+
+Result: See which architecture (64-32 vs 128-64-32 vs 256-128-64) performs best
+
+
+Experiment 2: Compare all learning paradigms
+─────────────────────────────────────────────
+python ml_trainer.py --all
+
+Result: Get Linear, MLP, GA, and DQL all trained and ready to compare
+
+
+Experiment 3: Just evolutionary approach
+─────────────────────────────────────────
+python ml_trainer.py --ga
+
+Result: Fast GA training without waiting for MLP/DQL
+
+
+Experiment 4: Just reinforcement learning
+──────────────────────────────────────────
+python ml_trainer.py --dql
+
+Result: Focus on DQL without other models
+
+
+================================================================================
+TUNING HYPERPARAMETERS
+================================================================================
+
+For GA hyperparameters, edit ml_trainer.py line ~290:
+
+    ga = GeneticAlgorithmTrainer(
+        state_dim=17,
+        action_dim=3,
+        population_size=50,        # ← Change this
+        generations=100            # ← Change this
+    )
+
+For DQL hyperparameters, edit ml_trainer.py line ~345:
+
+    dql = DQLTrainer(
+        state_dim=17,
+        hidden_dims=[128, 64],     # ← Change network architecture
+        learning_rate=0.001,       # ← Change learning rate
+        gamma=0.99,                # ← Change discount factor
+        batch_size=64,             # ← Change batch size
+        epochs=50                  # ← Change training epochs
+    )
+
+
+================================================================================
+TYPICAL WORKFLOW
+================================================================================
+
+# First time setup
+python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
+
+# Train everything
+python ml_trainer.py --all
+
+# Test different GA settings
+# Edit population_size in ml_trainer.py to 100
+python ml_trainer.py --ga
+# Save: mv ml_results/ga_model.pkl ml_results/ga_model_pop100.pkl
+
+# Edit population_size to 200
+python ml_trainer.py --ga
+# Save: mv ml_results/ga_model.pkl ml_results/ga_model_pop200.pkl
+
+# Test different DQL settings
+# Edit epochs to 100 in ml_trainer.py
+python ml_trainer.py --dql
+# Save: mv ml_results/dql_model.pt ml_results/dql_model_epochs100.pt
+
+
+================================================================================
+OUTPUTS YOU'LL GET
+================================================================================
+
+ml_data/ (created by Step 1)
+  ├── X_states.npy, y_actions.npy              (LR/MLP data)
+  ├── X_states_normalized.npy
+  ├── normalization_min.npy, normalization_max.npy
+  ├── episodes_states.npy, episodes_actions.npy (GA data)
+  ├── episode_lengths.npy
+  ├── dql_transitions.npy                       (DQL data)
+  └── feature_names.txt
+
+ml_results/ (created by Step 2)
+  ├── linear_regression_gas.pkl                 (Linear models)
+  ├── linear_regression_brake.pkl
+  ├── linear_regression_steer.pkl
+  ├── mlp_64_32_*.pkl                           (MLP models)
+  ├── mlp_128_64_32_*.pkl
+  ├── mlp_256_128_64_*.pkl
+  ├── ga_model.pkl                              (GA model)
+  ├── dql_model.pt                              (DQL model)
+  ├── model_comparison.png                      (Plots)
+  ├── ga_fitness_history.png
+  ├── dql_loss_history.png
+  └── training_report.txt
+
+
+================================================================================
+UPDATED DIRECTORY STRUCTURE
+================================================================================
+
+e:\ac_telemetry\
+├── reader.py                          ✅ Telemetry capture
+├── feature_schema.py                  ✅ Feature definitions
+├── telemetry_analyse_terminal.py      ✅ Dataset preparation (--ml flag)
+├── ml_trainer.py                      ✅ ALL model training (--lr/mlp/ga/dql)
+├── policies/                          ✅ Policy implementations
+│   ├── mlp_policy.py           ❌ REMOVED
+│   ├── base_policy.py          ❌ REMOVED
+│   ├── mlp_policy.py           ❌ REMOVED
+│   ├── ga_policy.py            ❌ REMOVED
+│   ├── dql_policy.py           ❌ REMOVED
+│   └── policy_driver.py        ❌ REMOVED
+├── ml_data/                           ✅ All datasets (from analyse script)
+├── ml_results/                        ✅ All trained models (from trainer)
+└── telemetry_logs/run2/
+    └── acc_session_combined_2.csv    ✅ Your data
+
+
+ (no longer needed):
+    train/train_ga.py
+    train/train_dql.py
+    ga_policies/
+    dql_policies/
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+Old workflow: 4 steps, multiple dataset generations
+New workflow: 2 steps, single dataset generation
+
+Step 1: python telemetry_analyse_terminal.py <csv> --ml
+Step 2: python ml_trainer.py --all
+
+That's it! All models trained with consistent datasets.
+"""
+
+
+
+Test:
+# Test Linear Regression for 3 laps
+python driver.py --policy linear --test-laps 3
+
+# Test MLP (256-128-64) continuously
+python driver.py --policy mlp --model-suffix mlp_256_128_64
+
+# Test GA for 5 laps
+python driver.py --policy ga --test-laps 5
+
+# Test DQL for 2 laps
+python driver.py --policy dql --test-laps 2

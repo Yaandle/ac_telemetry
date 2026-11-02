@@ -1,52 +1,58 @@
+import argparse
 import pandas as pd
-import sys
 
-# Remove first and last laps from the CSV file
-def clean_laps(csv_file):
+
+def _default_output(csv_file, suffix):
+    stem = csv_file[:-4] if csv_file.lower().endswith(".csv") else csv_file
+    return f"{stem}_{suffix}.csv"
+
+
+# Remove first and last laps (out-lap and partial in-lap) into a new CSV
+def clean_laps(csv_file, output_file=None):
     df = pd.read_csv(csv_file)
     if "current_lap" not in df.columns:
         raise ValueError("CSV missing 'current_lap' column")
     min_lap, max_lap = df["current_lap"].min(), df["current_lap"].max()
     df = df[(df["current_lap"] != min_lap) & (df["current_lap"] != max_lap)]
-    df.to_csv(csv_file, index=False)
-    print(f"[CLEAN] {csv_file}: removed laps {min_lap} & {max_lap}")
 
-if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("Usage: python clean_laps.py <csv_file>")
-    else:
-        clean_laps(sys.argv[1])
+    output_file = output_file or _default_output(csv_file, "clean")
+    if output_file == csv_file:
+        raise ValueError("Refusing to overwrite the source CSV; pass a different output file")
+    df.to_csv(output_file, index=False)
+    print(f"[CLEAN] {csv_file}: removed laps {min_lap} & {max_lap} -> {output_file}")
+    return output_file
 
 
 def export_gas_steer(csv_file, output_file=None):
     """
-    Export only the 'gas' and 'steer' columns from a CSV.
-    Optionally save to a new CSV file.
+    Export only the 'gas' and 'steer' columns from a CSV into a new CSV.
     """
-    # Read the CSV
     df = pd.read_csv(csv_file)
 
-    # Check required columns
     required_cols = ["gas", "steer"]
     for col in required_cols:
         if col not in df.columns:
             raise ValueError(f"CSV missing '{col}' column")
 
-    # Keep only gas and steer
-    df_export = df[required_cols]
-
-    # Default output filename
-    if output_file is None:
-        output_file = csv_file.replace(".csv", "_gas_steer.csv")
-
-    # Save to CSV
-    df_export.to_csv(output_file, index=False)
+    output_file = output_file or _default_output(csv_file, "gas_steer")
+    if output_file == csv_file:
+        raise ValueError("Refusing to overwrite the source CSV; pass a different output file")
+    df[required_cols].to_csv(output_file, index=False)
     print(f"[EXPORT] Saved gas and steer to {output_file}")
+    return output_file
+
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print("Usage: python export_gas_steer.py <csv_file> [output_file]")
+    parser = argparse.ArgumentParser(description="Export subsets of a telemetry CSV. The source file is never modified.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    for name, help_text in (("clean", "drop the first and last laps"),
+                            ("gas-steer", "keep only the gas and steer columns")):
+        p = sub.add_parser(name, help=help_text)
+        p.add_argument("csv_file")
+        p.add_argument("output_file", nargs="?")
+    args = parser.parse_args()
+
+    if args.command == "clean":
+        clean_laps(args.csv_file, args.output_file)
     else:
-        csv_file = sys.argv[1]
-        output_file = sys.argv[2] if len(sys.argv) == 3 else None
-        export_gas_steer(csv_file, output_file)
+        export_gas_steer(args.csv_file, args.output_file)

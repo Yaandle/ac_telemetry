@@ -1,0 +1,18 @@
+# Capture, analysis and the browser dashboard's data (dashboard itself needs nothing)
+numpy>=2.0
+pandas>=2.0
+matplotlib>=3.8
+duckdb>=1.0
+plotly>=5.0
+
+# Streamlit analytics (telemetry_analysis_streamlit.py)
+streamlit>=1.30
+altair>=5.0
+
+# Autonomous driving: pilot.py drives ACC through a virtual Xbox pad (ViGEmBus driver required)
+vgamepad>=0.1
+
+# January ML experiments (ml_trainer.py, driver.py)
+scikit-learn>=1.3
+joblib>=1.3
+torch>=2.0

@@ -306,8 +306,8 @@ class ACTelemetryReader:
                 gear=int(np.clip(p.gear - 1, 0, 8)),   # ACC: 0=R, 1=N, 2=1st
                 rpm=int(np.clip(p.rpm, 0, 12000)),
                 vx=p.velocity[0], vy=p.velocity[1], vz=p.velocity[2],
-                accel_longitudinal=p.accG[0],
-                accel_lateral=p.accG[2],
+                accel_longitudinal=p.accG[2],
+                accel_lateral=p.accG[0],
                 gas=gas, brake=brake, steer=steer,
                 distance_m=distance,
                 lap_fraction=g.normalizedCarPosition,
