@@ -78,7 +78,7 @@ select { font: inherit; color: var(--ink); background: none; border: 1px solid v
 .road { fill: var(--road); fill-rule: evenodd; stroke: none; }
 .edge { fill: none; stroke: var(--soft); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .ref { fill: none; stroke: var(--mute); stroke-width: 1; stroke-dasharray: 4 5; vector-effect: non-scaling-stroke; }
-.line { fill: none; stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.line { fill: none; stroke-width: var(--line-w, 1.6px); stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
 .sf { stroke: var(--accent); stroke-width: 3; vector-effect: non-scaling-stroke; }
 .cut { stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .pin { stroke: var(--bg); stroke-width: 1.2; vector-effect: non-scaling-stroke; }

@@ -297,10 +297,16 @@
     const b = S.bounds, pad = Math.max(b.x1 - b.x0, b.y1 - b.y0) * 0.08, a = aspect();
     const w = Math.max(b.x1 - b.x0 + 2 * pad, (b.y1 - b.y0 + 2 * pad) / a);
     view = { x: (b.x0 + b.x1) / 2 - w / 2, y: (b.y0 + b.y1) / 2 - w * a / 2, w, h: w * a };
+    fullW = w;
     applyView();
   }
+  // Racing lines are drawn in screen pixels; thicken them as you zoom so they read without zooming all the way in
+  let fullW = 1;
+  const LINE_W = 1.6, LINE_W_MAX = 7;
   function applyView() {
     svg.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    const zoom = Math.max(1, fullW / view.w);
+    svg.style.setProperty('--line-w', Math.min(LINE_W_MAX, LINE_W * Math.pow(zoom, 0.55)).toFixed(2) + 'px');
     const fs = view.w / 70;
     kmLabels.forEach((k) => {
       k.t.setAttribute('font-size', fs);
