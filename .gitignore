@@ -1,6 +1,8 @@
 # Environment / caches
 ac_telemtry_venv/
 ac_telemetry_venv/
+venv/
+.venv/
 __pycache__/
 *.pyc
 .claude/
