@@ -448,12 +448,26 @@ def fmt_lap(t):
     return f"{int(t // 60)}:{t % 60:06.3f}"
 
 
-def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet=False, launch=None):
+def load_edges(track_path):
+    """Measured road edges next to the line (<track>.edges.json, track_line.py --edges), or None."""
+    p = Path(track_path).with_suffix(".edges.json")
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    return {"right_m": np.asarray(d["right_m"]), "left_m": np.asarray(d["left_m"])}
+
+
+def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet=False, launch=None,
+        edges=None, edge_margin=0.3):
     """
     Drive `laps` timed laps (0 = until Ctrl+C), start/finish to start/finish, unless the
     car is stuck or crashes. The drive to the first crossing is an untimed out-lap.
     launch=(gas, speed m/s): hold at least that throttle from rest until that speed, so
     the car pulls away cleanly before the policy's pedals take over (it steers throughout).
+    edges: measured road edges (load_edges). Each time the car goes more than edge_margin past
+    them it prints and logs an off, with where, which side and how far; and it prints where ACC
+    invalidated the lap (isValidLap). Watching only: neither changes how the car is driven.
+    ACC's numberOfTyresOut stays 0 in every log, so it can't be used for this.
     Returns a summary dict with per-lap results.
     """
     st = backend.read()
@@ -469,7 +483,8 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
         f = open(log_path, "w", newline="")
         log = csv.writer(f)
         log.writerow(["t", "s", "lat", "herr", "speed", "v_target", "gas", "brake", "steer_des", "steer_cmd",
-                      "steer_meas", "lost", "x", "z", "gear", "rpm", "tyres_out", "lap", "acc_laps", "acc_valid"])
+                      "steer_meas", "lost", "x", "z", "gear", "rpm", "tyres_out", "lap", "acc_laps", "acc_valid",
+                      "past_edge_m"])
 
     L = pilot.t.lap_m
     s_prev, travelled = obs["s"], 0.0
@@ -499,6 +514,21 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
     cur = None                                            # lap in progress; None during the out-lap
     finish_t = None
     result = "stopped"
+    # Off the measured road (edges) and ACC's invalidation, watched each frame
+    offs, off_now, off_frames, valid_prev, invalid_at = [], None, 0, st.get("valid"), []
+
+    def where(s):
+        return f"{s:.0f} m ({100 * s / L:.1f}%)"
+
+    def lap_label():
+        return f"lap {len(done) + 1}" if cur is not None else "out-lap"
+
+    def end_off():
+        o = off_now
+        o["dur_s"] = round(sim_t - o["t"], 2)
+        offs.append(o)
+        if not quiet:
+            print(f"   back on the road after {o['dur_s']:.1f} s, at most {o['max_past_m']:.1f} m past the edge")
     try:
         while True:
             loop_t = time.time()
@@ -535,9 +565,37 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
             lost_t += dt if out["lost"] else 0.0
             stuck = stuck + dt if st["speed"] < 2.0 else 0.0
             frames += 1
+            past = None
+            if edges is not None:
+                ie = int(round(out["s"] / pilot.t.grid)) % len(edges["right_m"])
+                past = out["lat"] - edges["right_m"][ie] if out["lat"] > 0 else -out["lat"] - edges["left_m"][ie]
+                if past > edge_margin:
+                    off_frames += 1
+                    if off_now is None:
+                        off_now = {"t": round(sim_t, 2), "s": round(out["s"], 1), "lap": lap_label(),
+                                   "side": "right" if out["lat"] > 0 else "left", "max_past_m": round(past, 2)}
+                        if cur is not None:
+                            cur["offs"] += 1
+                        if not quiet:
+                            print(f"⚠️  OFF the road {off_now['side']}, {lap_label()} at {where(out['s'])}: "
+                                  f"{past:.1f} m past the measured edge")
+                    else:
+                        off_now["max_past_m"] = round(max(off_now["max_past_m"], past), 2)
+                elif off_now is not None:
+                    end_off()
+                    off_now = None
+            if st.get("valid") is not None:
+                if valid_prev == 1 and st["valid"] == 0:
+                    invalid_at.append({"t": round(sim_t, 2), "s": round(out["s"], 1), "lap": lap_label()})
+                    if cur is not None and cur["invalid_at_m"] is None:
+                        cur["invalid_at_m"] = round(out["s"], 1)
+                    if not quiet:
+                        print(f"❌ ACC invalidated the {lap_label()} at {where(out['s'])}, lat {out['lat']:+.1f} m")
+                valid_prev = st["valid"]
             if cur is not None:
                 cur["lats"].append(abs(out["lat"]))
                 cur["lost"] += dt if out["lost"] else 0.0
+                cur["off_frames"] += past is not None and past > edge_margin
 
             if acc_laps is not None and st.get("laps") is not None and st["laps"] > acc_laps:
                 acc_laps = st["laps"]
@@ -556,16 +614,21 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
                     n = len(done) + 1
                     lap = {"lap": n, "time_s": round(sim_t - cur["t0"], 3), "acc_s": None,
                            "median_lat_m": round(float(np.median(a)), 3), "max_lat_m": round(float(a.max()), 3),
-                           "recover_s": round(cur["lost"], 2), "acc_valid": None}
+                           "recover_s": round(cur["lost"], 2), "acc_valid": None,
+                           "offs": cur["offs"] if edges is not None else None,
+                           "outside_pct": round(100 * cur["off_frames"] / len(a), 1) if edges is not None else None,
+                           "invalid_at_m": cur["invalid_at_m"]}
                     done.append(lap)
                     match_acc()
                     if not quiet:
                         print(f"LAP {n}  {fmt_lap(lap['time_s'])}  median {lap['median_lat_m']:.2f} m"
                               f"  max {lap['max_lat_m']:.1f} m  recovering {lap['recover_s']:.1f} s"
-                              + ("  INVALID (ACC)" if lap["acc_valid"] is False else ""))
+                              + (f"  offs {lap['offs']} ({lap['outside_pct']:.1f}% of the lap)" if edges is not None else "")
+                              + ("  INVALID (ACC)" if lap["acc_valid"] is False else "")
+                              + (f" from {where(lap['invalid_at_m'])}" if lap["invalid_at_m"] is not None else ""))
                 elif not quiet:
                     print(f"Start/finish after a {sim_t:.1f} s out-lap. Timing starts.")
-                cur = {"t0": sim_t, "lats": [], "lost": 0.0}
+                cur = {"t0": sim_t, "lats": [], "lost": 0.0, "offs": 0, "off_frames": 0, "invalid_at_m": None}
             if acc_events:
                 match_acc()
 
@@ -575,12 +638,15 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
                               f"{out['brake']:.2f}", f"{out['steer_des']:.3f}", f"{out['steer']:.3f}",
                               f"{st['steer']:.3f}", int(out["lost"]), f"{st['x']:.2f}", f"{st['z']:.2f}",
                               st.get("gear", ""), f"{st.get('rpm', 0):.0f}", st.get("tyres_out", ""),
-                              len(done) + 1 if cur is not None else 0, st.get("laps", ""), st.get("valid", "")])
+                              len(done) + 1 if cur is not None else 0, st.get("laps", ""), st.get("valid", ""),
+                              f"{past:.2f}" if past is not None else ""])
             if not quiet and frames % UPDATE_HZ == 0:
                 lap_no = f"lap {len(done) + 1}" if cur is not None else "out-lap"
                 print(f"{sim_t:6.1f}s  {lap_no:7s} {100 * ((s0 + travelled) % L) / L:5.1f}%  "
                       f"{st['speed'] * 3.6:5.0f}/{out['v_target'] * 3.6:3.0f} km/h  lat {out['lat']:+5.1f} m"
-                      f"  steer {out['steer_des']:+.2f}" + ("  RECOVER" if out["lost"] else ""))
+                      f"  steer {out['steer_des']:+.2f}" + ("  RECOVER" if out["lost"] else "")
+                      + (f"  OFF {past:+.1f} m" if off_now is not None else "")
+                      + ("  INVALID" if st.get("valid") == 0 else ""))
 
             if laps and len(done) >= laps:
                 # Live, give ACC up to 3 s to register the last lap so its official time is kept
@@ -601,12 +667,16 @@ def run(pilot, backend, laps=1, log_path=None, realtime=True, max_s=400.0, quiet
         backend.write(0.0, 0.0, 0.0)
         if log:
             f.close()
+        if off_now is not None:
+            end_off()
 
     times = [l["acc_s"] or l["time_s"] for l in done]
     return {"result": result, "time_s": sim_t, "progress": travelled / L, "laps_done": len(done),
             "best_lap_s": min(times) if times else None, "laps": done,
             "max_lat_m": max_lat, "median_lat_m": float(np.median(lats)) if lats else None,
-            "recover_s": lost_t}
+            "recover_s": lost_t,
+            "outside_pct": round(100 * off_frames / max(frames, 1), 1) if edges is not None else None,
+            "offs": offs if edges is not None else None, "acc_invalidated": invalid_at}
 
 
 def confirm_start(auto, summary):
@@ -658,6 +728,8 @@ def main():
                     help="sim only: how fast the car's steering follows the joystick, s (live ACC is ~0.01)")
     ap.add_argument("--no-steer-comp", action="store_true", help="don't compensate for ACC's speed-scaled steering")
     ap.add_argument("--no-log", action="store_true")
+    ap.add_argument("--edge-margin", type=float, default=0.3,
+                    help="report an off when the car is this far past the measured road edges (<track>.edges.json), m")
     ap.add_argument("--launch-gas", type=float, default=0.7,
                     help="live: minimum throttle from rest until --launch-kmh, so the car doesn't stall (0 = off)")
     ap.add_argument("--launch-kmh", type=float, default=30.0, help="live: speed where the policy takes the pedals")
@@ -672,6 +744,9 @@ def main():
     comp = None if a.no_steer_comp else SteerComp() if a.sim else SteerComp.load()
     pilot = Pilot(track, policy, pace=a.pace, brake_margin=a.brake_margin, steer_comp=comp)
     log = None if a.no_log else f"training_logs/pilot_{a.policy}_{datetime.now():%Y%m%d_%H%M%S}.csv"
+    edges = load_edges(a.track)
+    if edges is None:
+        print(f"No {Path(a.track).with_suffix('.edges.json')}: offs from the measured road won't be reported")
 
     if a.sim:
         from pilot_sim import SimBackend
@@ -679,7 +754,8 @@ def main():
         backend = SimBackend(track, start_s=a.start_s if a.start_s is not None else track.lap_m - 150,
                              steer_mismatch=a.steer_mismatch, steer_lag=a.steer_lag,
                              steer_scale=(acc.V, acc.gain) if acc is not None else None)
-        res = run(pilot, backend, laps=a.laps, log_path=log, realtime=False, quiet=True)
+        res = run(pilot, backend, laps=a.laps, log_path=log, realtime=False, quiet=True,
+                  edges=edges, edge_margin=a.edge_margin)
     else:
         backend = AccBackend(manual_gears=a.manual_gears)
         norm = lambda s: s.lower().replace(" ", "_")
@@ -708,7 +784,7 @@ def main():
             raise
         launch = (a.launch_gas, a.launch_kmh / 3.6) if a.launch_gas > 0 else None
         try:
-            res = run(pilot, backend, laps=a.laps, log_path=log, launch=launch)
+            res = run(pilot, backend, laps=a.laps, log_path=log, launch=launch, edges=edges, edge_margin=a.edge_margin)
         finally:
             backend.close()
             if comp is not None:
@@ -723,7 +799,15 @@ def main():
         acc = f"  ACC {fmt_lap(l['acc_s'])}" if l["acc_s"] else ""
         valid = {None: "", True: "  valid", False: "  INVALID"}[l["acc_valid"]]
         print(f"  lap {l['lap']}: {fmt_lap(l['time_s'])}{acc}  median {l['median_lat_m']:.2f} m"
-              f"  max {l['max_lat_m']:.1f} m  recovering {l['recover_s']:.1f} s{valid}")
+              f"  max {l['max_lat_m']:.1f} m  recovering {l['recover_s']:.1f} s{valid}"
+              + (f" from {l['invalid_at_m']:.0f} m" if l.get("invalid_at_m") is not None else "")
+              + (f"  offs {l['offs']} ({l['outside_pct']:.1f}%)" if l.get("offs") is not None else ""))
+    if res["offs"] is not None:
+        print(f"  off the measured road (+{a.edge_margin} m): {len(res['offs'])} time(s), {res['outside_pct']:.1f}% of the run"
+              + "".join(f"\n    {o['lap']} at {o['s']:.0f} m ({100 * o['s'] / track.lap_m:.1f}%) {o['side']}, "
+                        f"{o['dur_s']:.1f} s, up to {o['max_past_m']:.1f} m past" for o in res["offs"]))
+    for ev in res["acc_invalidated"]:
+        print(f"  ACC invalidated the {ev['lap']} at {ev['s']:.0f} m ({100 * ev['s'] / track.lap_m:.1f}%)")
     if res["best_lap_s"]:
         print(f"  best {fmt_lap(res['best_lap_s'])}")
     if log:
@@ -732,7 +816,7 @@ def main():
                 "weights": a.weights, "track": a.track, "pace": a.pace, "brake_margin": a.brake_margin,
                 "grip_limit": a.grip_limit if a.policy == "mltt" else None,
                 "net_steer": a.net_steer if a.policy == "mltt" else None,
-                "grip_capped_frames": getattr(policy, "capped", None),
+                "grip_capped_frames": getattr(policy, "capped", None), "edge_margin": a.edge_margin,
                 "manual_gears": getattr(backend, "manual_gears", None),
                 "steer_comp": not a.no_steer_comp, "acc_steer": a.acc_steer if a.sim else None,
                 "steer_mismatch": a.steer_mismatch if a.sim else None,
