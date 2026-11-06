@@ -44,13 +44,13 @@ class LiveLikeSim(SimBackend):
 
 
 def check(track, edges, policy_name, weights, pace, mismatch, laps=2, net_steer="lag", grip_limit=2.0,
-          edge_margin=0.3, steer_noise=0.05, seed=0, log_path=None):
+          edge_margin=0.3, steer_noise=0.05, seed=0, log_path=None, start_s=None):
     track.idx = None
     policy = (pilot.MLTrackTrainer(track, weights, grip_limit=grip_limit, steer_model=net_steer)
               if policy_name == "mltt" else pilot.Classical(track))
     p = pilot.Pilot(track, policy, pace=pace, steer_comp=pilot.SteerComp.load())
     acc = pilot.SteerComp.load()
-    backend = LiveLikeSim(track, start_s=track.lap_m - 150, steer_mismatch=mismatch, steer_lag=0.01,
+    backend = LiveLikeSim(track, start_s=track.lap_m - 150 if start_s is None else start_s, steer_mismatch=mismatch, steer_lag=0.01,
                           delay_frames=1, steer_scale=(acc.V, acc.gain), steer_noise=steer_noise, seed=seed)
     with tempfile.TemporaryDirectory() as d:
         tmp = log_path or Path(d) / "check.csv"
@@ -92,16 +92,20 @@ def main():
     ap.add_argument("--grip-limit", type=float, default=2.0)
     ap.add_argument("--edge-margin", type=float, default=0.3)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--start-s", type=float, help="start from rest this far along the line, m (default 150 m before start/finish; ACC's Hotlap start at Bathurst is ~5720 m)")
     ap.add_argument("--json", help="also write the results here")
     a = ap.parse_args()
 
     track = TrackLine(a.track)
     edges = json.loads(Path(a.track).with_suffix(".edges.json").read_text())
+    # The check reads ACC's steering scale from the gain file every live run re-saves: say which one
+    saved = json.loads(pilot.STEER_GAIN_PATH.read_text()).get("saved") if pilot.STEER_GAIN_PATH.exists() else None
+    print(f"Steer gains: {pilot.STEER_GAIN_PATH}, saved {saved}")
     results = []
     for pace in a.pace:
         for m in a.mismatch:
             r = check(track, edges, a.policy, a.weights, pace, m, a.laps, a.net_steer, a.grip_limit,
-                      a.edge_margin, seed=a.seed)
+                      a.edge_margin, seed=a.seed, start_s=a.start_s)
             r.update(pace=pace, mismatch=m)
             results.append(r)
             laps = ", ".join(f"{x:.1f}" for x in r["laps"]) or "-"
@@ -111,7 +115,7 @@ def main():
                   + (f"  grip-capped {r['grip_capped_pct']}%  pedals governed {r['governed_pct']}%"
                      if r["grip_capped_pct"] is not None else ""))
     if a.json:
-        Path(a.json).write_text(json.dumps({"args": vars(a), "results": results}, indent=1))
+        Path(a.json).write_text(json.dumps({"args": vars(a), "steer_gains_saved": saved, "results": results}, indent=1))
 
 
 if __name__ == "__main__":
