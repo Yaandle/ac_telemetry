@@ -113,13 +113,18 @@ class MLTrackTrainer:
     steering version of the speed envelope. Live, the networks asked for 2-3.5x that into
     Murray's and Griffins Bend, the car slid and ACC counter-steered; classical stays under
     0.92x it 99% of the time. 0 turns it off.
+
+    steer_model: how the internal steer follows the network's target.
+      "lag"   first-order, steer_lag s (pilot_evolve.py; every genome before 6 Nov trained this way)
+      "ramp"  ML Track Trainer's env.js rampSteer: 3/s away from centre, 5/s back. Genomes from
+              the rebuilt trainer car (acc-track-import, 2 Nov) trained with this, and input 8 is it.
     """
 
     name = "mltt"
     LAYERS = (9, 12, 8, 2)
 
     def __init__(self, track: TrackLine, weights_path: str, width_factor=0.0053, verge=0.08, steer_lag=0.10,
-                 grip_limit=2.0):
+                 grip_limit=2.0, steer_model="lag"):
         d = json.loads(Path(weights_path).read_text())
         w = np.array(d["w"] if isinstance(d, dict) else d, dtype=float)
         size = sum(n * self.LAYERS[k] + n for k, n in enumerate(self.LAYERS[1:]))
@@ -142,6 +147,9 @@ class MLTrackTrainer:
         self.lat_max = np.maximum.accumulate(np.array(car["lat"]))
         self.grip_limit = grip_limit
         self.capped = 0                                   # frames where the cap cut the target
+        if steer_model not in ("lag", "ramp"):
+            raise ValueError(f"steer_model must be 'lag' or 'ramp', not {steer_model!r}")
+        self.steer_model = steer_model
 
     def act(self, st, obs):
         q = math.pi / 2
@@ -156,7 +164,12 @@ class MLTrackTrainer:
             if abs(target) > cap:
                 target = math.copysign(cap, target)
                 self.capped += 1
-        self.str += (target - self.str) * self.alpha
+        if self.steer_model == "ramp":
+            away = abs(target) > abs(self.str) and target * self.str >= 0
+            d, m = target - self.str, (3.0 if away else 5.0) * DT
+            self.str = target if abs(d) <= m else self.str + math.copysign(m, d)
+        else:
+            self.str += (target - self.str) * self.alpha
         return float(x[0]), self.str
 
     def sync(self, steer):
@@ -638,6 +651,9 @@ def main():
                     help=f"sim only: scale the joystick down with speed like ACC's gamepad ({STEER_GAIN_PATH})")
     ap.add_argument("--grip-limit", type=float, default=2.0,
                     help="mltt: cap the network's steer at this x the car's measured grip at each speed (0 = off)")
+    ap.add_argument("--net-steer", choices=["lag", "ramp"], default="lag",
+                    help="mltt: internal steer follows the network as a 0.10 s lag (pilot_evolve.py genomes) or "
+                         "ML Track Trainer's rate limit, 3/s out, 5/s back (genomes from the rebuilt trainer car)")
     ap.add_argument("--steer-lag", type=float, default=0.10,
                     help="sim only: how fast the car's steering follows the joystick, s (live ACC is ~0.01)")
     ap.add_argument("--no-steer-comp", action="store_true", help="don't compensate for ACC's speed-scaled steering")
@@ -650,7 +666,8 @@ def main():
     a = ap.parse_args()
 
     track = TrackLine(a.track)
-    policy = MLTrackTrainer(track, a.weights, grip_limit=a.grip_limit) if a.policy == "mltt" else Classical(track)
+    policy = (MLTrackTrainer(track, a.weights, grip_limit=a.grip_limit, steer_model=a.net_steer)
+              if a.policy == "mltt" else Classical(track))
     # Live starts from the gains learned on earlier runs; the sim starts neutral and has to learn them
     comp = None if a.no_steer_comp else SteerComp() if a.sim else SteerComp.load()
     pilot = Pilot(track, policy, pace=a.pace, brake_margin=a.brake_margin, steer_comp=comp)
@@ -713,6 +730,10 @@ def main():
         # Sidecar: what was run and how it went, so a log can be traced without guessing (docs/ml_record.md)
         side = {"log": Path(log).name, "mode": "sim" if a.sim else "live", "policy": a.policy,
                 "weights": a.weights, "track": a.track, "pace": a.pace, "brake_margin": a.brake_margin,
+                "grip_limit": a.grip_limit if a.policy == "mltt" else None,
+                "net_steer": a.net_steer if a.policy == "mltt" else None,
+                "grip_capped_frames": getattr(policy, "capped", None),
+                "manual_gears": getattr(backend, "manual_gears", None),
                 "steer_comp": not a.no_steer_comp, "acc_steer": a.acc_steer if a.sim else None,
                 "steer_mismatch": a.steer_mismatch if a.sim else None,
                 **{k: (round(v, 3) if isinstance(v, float) else v) for k, v in res.items()}}
