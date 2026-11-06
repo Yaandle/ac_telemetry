@@ -16,6 +16,7 @@ Conventions (checked against the Bathurst logs):
 
 Usage:
   python track_line.py telemetry_logs/*mount_panorama.csv --out tracks/mount_panorama.json
+  python track_line.py telemetry_logs/*mount_panorama.csv --edges tracks/mount_panorama.json
 """
 
 import argparse
@@ -145,6 +146,46 @@ def car_envelope(laps, bin_ms=5.0):
     return out
 
 
+def road_edges(csvs, track_path, bin_m=10.0, pct=98, lo_m=2.0, hi_m=7.5):
+    """
+    How far right and left of the reference line you actually drove, per stretch of
+    track: the usable road, as far as the logs can show it. ACC's tyres_out stays 0 in
+    these logs, so the edges come from where the car went, not where track limits are.
+    The pct-th percentile per bin_m bin drops spins; clipped to [lo_m, hi_m], smoothed.
+    """
+    t = TrackLine(track_path)
+    S, L = [], []
+    for p in csvs:
+        df = pd.read_csv(p, usecols=["pos_x", "pos_z", "speed_kmh", "in_pit_lane", "lap_fraction"])
+        df = df[(df.speed_kmh > 20) & (df.in_pit_lane == 0)].iloc[::2]
+        t.idx = None
+        for x, z, f in zip(df.pos_x, df.pos_z, df.lap_fraction):
+            s, lat = t.locate(x, z, f)
+            S.append(s)
+            L.append(lat)
+    S, L = np.array(S), np.array(L)
+    nb = int(np.ceil(t.lap_m / bin_m))
+    b = np.minimum((S // bin_m).astype(int), nb - 1)
+    right, left = np.full(nb, np.nan), np.full(nb, np.nan)
+    for i in range(nb):
+        m = b == i
+        if (m & (L > 0)).sum() > 10:
+            right[i] = np.percentile(L[m & (L > 0)], pct)
+        if (m & (L < 0)).sum() > 10:
+            left[i] = np.percentile(-L[m & (L < 0)], pct)
+    centres = (np.arange(nb) + 0.5) * bin_m
+    d = np.arange(t.n) * t.grid
+    k = np.ones(5) / 5
+    out = {}
+    for name, e in (("right_m", right), ("left_m", left)):
+        ok = np.isfinite(e)
+        e = np.interp(centres, centres[ok], e[ok])
+        e = np.convolve(np.r_[e[-2:], e, e[:2]], k, "valid")         # circular smoothing
+        out[name] = np.clip(np.interp(d, centres, e, period=t.lap_m), lo_m, hi_m).round(2).tolist()
+    return {"track": str(track_path), "files": [Path(p).name for p in csvs], "samples": int(len(S)),
+            "bin_m": bin_m, "percentile": pct, "clip_m": [lo_m, hi_m], **out}
+
+
 class TrackLine:
     """Loaded reference line with nearest-point lookup and the live observation."""
 
@@ -214,7 +255,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("csv", nargs="+")
     ap.add_argument("--out", default="tracks/track.json")
+    ap.add_argument("--edges", metavar="TRACK_JSON",
+                    help="instead of building a line, measure road edges around this one from the CSVs "
+                         "and save them next to it as <name>.edges.json")
     a = ap.parse_args()
+    if a.edges:
+        e = road_edges(a.csv, a.edges)
+        out = Path(a.edges).with_suffix(".edges.json")
+        out.write_text(json.dumps(e))
+        for side in ("right_m", "left_m"):
+            print(f"{side[:-2]:5s} edge median {np.median(e[side]):.2f} m, "
+                  f"10th pct {np.percentile(e[side], 10):.2f} m, 90th {np.percentile(e[side], 90):.2f} m")
+        print(f"{e['samples']} samples from {len(e['files'])} files. Saved {out}")
+        return
     t = build(a.csv)
     out = Path(a.out)
     out.parent.mkdir(exist_ok=True)

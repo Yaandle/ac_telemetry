@@ -9,6 +9,17 @@ of reward as env.js. Two differences from the browser version:
   track  the reference line from your ACC laps (track_line.py), in real metres
   car    fitted to your telemetry (pilot_sim.py's model, vectorised over the population)
 
+Road edges: with a <track>.edges.json (track_line.py --edges) next to the line, the road
+is where you actually drove, per point and per side, plus --edge-margin; the wall is
+--wall-margin past that. Without it, the old flat 7.5 m road / 12 m wall, which the
+from-scratch genome exploited (9% of its lap past 7.5 m). Over the grip limit the car
+scrubs speed (SCRUB) instead of clamping for free (15% of that lap sat at the clamp).
+
+--wall-margin 0 makes leaving the road end the run, like ACC's Hotlap mode, which restarts
+the lap at the first off. --steer-noise gives each car a random steering gain mismatch and
+bias every generation, so a genome has to correct drift instead of relying on an exact car:
+on 2 Nov both networks drifted 2-3 m wide on a near-straight live, steering almost straight.
+
 The whole population is simulated at once with numpy. Best weights are saved in the
 format ML Track Trainer keeps in localStorage ({"w": [...], "fit", "gen"}), plus the
 wall distance the inputs were scaled by, so pilot.py --policy mltt can drive ACC with them.
@@ -35,7 +46,8 @@ CONFIG = dict(population=64, elites=4, fresh=4, parent_fraction=0.25, crossover=
 REWARD = dict(progress=1.0, time=1.0, grass=15.0, crash=500.0, stall=100.0, stall_time=5.0,
               lap_bonus=5000.0, ref_time=180.0, lap_time=60.0, max_time=300.0)
 DT = 1 / 30
-ROAD_HALF, WALL = 7.5, 12.0
+ROAD_HALF, WALL = 7.5, 12.0               # flat fallback when there's no edges file
+SCRUB = 5.0                               # m/s^2 lost per 100% over the grip limit (capped at 100%)
 
 
 def wrap(a):
@@ -85,8 +97,21 @@ def evolve(ranked, gen, rng):
 # ============================================================
 
 class Population:
-    def __init__(self, track: TrackLine, n, start_s=10.0, steer_lag=0.10):
+    def __init__(self, track: TrackLine, n, start_s=10.0, steer_lag=0.10, edges=None, scrub=SCRUB,
+                 steer_noise=0.0, rng=None):
         self.t = track
+        # Per-point road and wall, each side of the line (+ = right)
+        if edges is None:
+            edges = dict(road_r=np.full(track.n, ROAD_HALF), road_l=np.full(track.n, ROAD_HALF),
+                         wall_r=np.full(track.n, WALL), wall_l=np.full(track.n, WALL))
+        self.e = edges
+        self.scrub = scrub
+        # Per car: steering gain mismatch (x1/(1+noise) .. x(1+noise)) and a bias of ~noise/10
+        rng = rng or np.random.default_rng()
+        k = 1 + steer_noise
+        self.mis = np.exp(rng.uniform(-math.log(k), math.log(k), n)) if steer_noise else np.ones(n)
+        self.bias = rng.normal(0, steer_noise / 10, n) if steer_noise else np.zeros(n)
+        self.off_t = np.zeros(n); self.clamp_t = np.zeros(n); self.alive_t = np.zeros(n)
         c = track.meta["car"]
         self.cv = np.array(c["v"])
         self.acc, self.brk = np.array(c["accel"]), np.array(c["brake"])
@@ -130,13 +155,18 @@ class Population:
         gas, brake = np.maximum(pedal, 0), np.maximum(-pedal, 0)
         v = self.v
         self.steer = np.where(a, self.steer + (target - self.steer) * self.alpha, self.steer)
-        kappa = self.steer / np.interp(v, self.cv, self.gain)
+        kappa = (self.steer + self.bias) / (np.interp(v, self.cv, self.gain) * self.mis)
         lim = np.interp(v, self.cv, self.lat_max) / np.maximum(v * v, 1.0)
+        over = np.clip(np.abs(kappa) / lim - 1, 0, 1)
         kappa = np.clip(kappa, -lim, lim)
         acc = gas * np.interp(v, self.cv, self.acc) - brake * np.interp(v, self.cv, self.brk) \
             - (1 - gas) * (0.3 + 0.0004 * v * v)
-        off = np.abs(self.lat) > ROAD_HALF
-        acc -= 6.0 * off
+        e, i = self.e, self.idx
+        off = (self.lat > e["road_r"][i]) | (-self.lat > e["road_l"][i])
+        acc -= 6.0 * off + self.scrub * over
+        self.off_t += DT * (a & off)
+        self.clamp_t += DT * (a & (over > 0))
+        self.alive_t += DT * a
         self.v = np.where(a, np.maximum(0, v + acc * DT), v)
         self.h = np.where(a, self.h + kappa * self.v * DT, self.h)
         self.x = np.where(a, self.x - np.sin(self.h) * self.v * DT, self.x)
@@ -151,7 +181,8 @@ class Population:
         self.best_s = np.where(better, self.s, self.best_s)
         self.stall = np.where(better, 0, self.stall + DT)
 
-        crash = a & (np.abs(self.lat) > WALL)
+        e, i = self.e, self.idx
+        crash = a & ((self.lat > e["wall_r"][i]) | (-self.lat > e["wall_l"][i]))
         lap = a & ~crash & (self.s >= self.t.lap_m * 0.999)
         stall = a & ~crash & ~lap & (self.stall > R["stall_time"])
         timeout = a & ~crash & ~lap & ~stall & (self.t_el > R["max_time"])
@@ -164,8 +195,18 @@ class Population:
         self.alive = a & ~(crash | lap | stall | timeout)
 
 
-def episode(track, pop, wall_m):
-    cars = Population(track, len(pop))
+def load_edges(track_path, edge_margin, wall_margin):
+    """Road and wall per point from <track>.edges.json, or None for the flat fallback."""
+    p = Path(track_path).with_suffix(".edges.json")
+    if not p.exists():
+        return None
+    d = json.loads(p.read_text())
+    r, l = np.array(d["right_m"]) + edge_margin, np.array(d["left_m"]) + edge_margin
+    return dict(road_r=r, road_l=l, wall_r=r + wall_margin, wall_l=l + wall_margin, file=str(p))
+
+
+def episode(track, pop, wall_m, edges=None, scrub=SCRUB, steer_noise=0.0, rng=None):
+    cars = Population(track, len(pop), edges=edges, scrub=scrub, steer_noise=steer_noise, rng=rng)
     while cars.alive.any():
         cars.step(forward(pop, cars.observe(wall_m)))
     return cars
@@ -180,9 +221,19 @@ def main():
     ap.add_argument("--resume", action="store_true", help="seed the population from --out")
     ap.add_argument("--seed-from", help="seed the population from a genome JSON, e.g. ML Track Trainer's "
                                         "Export best model ({\"w\": [...], \"fit\", \"gen\"})")
+    ap.add_argument("--edge-margin", type=float, default=0.5, help="m added to the measured road edges")
+    ap.add_argument("--wall-margin", type=float, default=3.0, help="m from road edge to wall (crash)")
+    ap.add_argument("--steer-noise", type=float, default=0.0,
+                    help="per-car steering gain mismatch up to this fraction (e.g. 0.25), plus a small bias")
+    ap.add_argument("--flat-edges", action="store_true",
+                    help=f"ignore the edges file: flat {ROAD_HALF} m road / {WALL} m wall, no scrub (the old sim)")
     a = ap.parse_args()
 
     track = TrackLine(a.track)
+    edges = None if a.flat_edges else load_edges(a.track, a.edge_margin, a.wall_margin)
+    scrub = 0.0 if a.flat_edges else SCRUB
+    print(f"Road edges: {edges['file']} +{a.edge_margin} m, wall +{a.wall_margin} m, scrub {scrub}" if edges
+          else f"Road edges: flat {ROAD_HALF} m, wall {WALL} m, scrub {scrub}")
     out = Path(a.out or Path(a.track).with_suffix(".evolved.json"))
     rng = np.random.default_rng(a.seed)
     wall_m = WALL
@@ -206,23 +257,28 @@ def main():
     log_path.parent.mkdir(exist_ok=True)
     with open(log_path, "w", newline="") as f:
         log = csv.writer(f)
-        log.writerow(["gen", "best_reward", "mean_reward", "best_progress", "laps", "best_lap_s", "crashes"])
+        log.writerow(["gen", "best_reward", "mean_reward", "best_progress", "laps", "best_lap_s", "crashes",
+                      "top_off_pct", "top_clamp_pct"])
         for gen in range(a.gens):
             t0 = time.time()
-            cars = episode(track, pop, wall_m)
+            cars = episode(track, pop, wall_m, edges, scrub, a.steer_noise, rng)
             order = np.argsort(-cars.R)
             top = order[0]
             laps = int((cars.reason == "lap").sum())
             lap_s = np.nanmin(cars.lap_time) if laps else float("nan")
             log.writerow([gen, round(cars.R[top], 1), round(cars.R.mean(), 1),
                           round(cars.best_s.max() / track.lap_m, 3), laps, round(lap_s, 2),
-                          int((cars.reason == "wall").sum())])
+                          int((cars.reason == "wall").sum()),
+                          round(100 * cars.off_t[top] / cars.alive_t[top], 1), round(100 * cars.clamp_t[top] / cars.alive_t[top], 1)])
             f.flush()
             print(f"gen {gen:3d}  best {cars.R[top]:8.0f}  progress {cars.best_s.max() / track.lap_m:5.1%}"
-                  f"  laps {laps:2d}  best lap {lap_s:6.1f}s  ({time.time() - t0:.1f}s)")
+                  f"  laps {laps:2d}  best lap {lap_s:6.1f}s  off {100 * cars.off_t[top] / cars.alive_t[top]:4.1f}%"
+                  f"  ({time.time() - t0:.1f}s)")
             if best is None or cars.R[top] > best["fit"]:
                 best = {"w": pop[top].round(6).tolist(), "fit": float(cars.R[top]), "gen": gen,
                         "wall_m": wall_m, "layers": list(LAYERS), "track": track.meta["name"],
+                        "edges": edges["file"] if edges else "flat", "scrub": scrub,
+                        "edge_margin": a.edge_margin, "wall_margin": a.wall_margin, "steer_noise": a.steer_noise,
                         "lap_s": None if np.isnan(cars.lap_time[top]) else float(cars.lap_time[top])}
                 out.write_text(json.dumps(best))
             pop = evolve([pop[i] for i in order], gen, rng)
