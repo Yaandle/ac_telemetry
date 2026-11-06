@@ -65,6 +65,8 @@ def check(track, edges, policy_name, weights, pace, mismatch, laps=2, net_steer=
     out = (lat > np.array(edges["right_m"])[i] + edge_margin) | (-lat > np.array(edges["left_m"])[i] + edge_margin)
     timed = lap > 0
     over = getattr(policy, "capped", 0)
+    # Frames where the speed envelope, not the network, set the pedals (pilot.Pilot.step: v > v_target + 1)
+    gov = np.array([float(r["speed"]) > float(r["v_target"]) + 1.0 and r["lost"] == "0" for r in rows])
     return {
         "result": res["result"], "progress": round(res["progress"], 3), "time_s": round(res["time_s"], 1),
         "laps": [l["time_s"] for l in res["laps"]],
@@ -74,6 +76,7 @@ def check(track, edges, policy_name, weights, pace, mismatch, laps=2, net_steer=
         "outside_pct": round(100 * float(out[timed].mean()), 1) if timed.any() else None,
         "first_off_s": round(float(t[out][0]), 1) if out.any() else None,
         "grip_capped_pct": round(100 * over / len(rows), 1) if policy_name == "mltt" else None,
+        "governed_pct": round(100 * float(gov[timed].mean()), 1) if policy_name == "mltt" and timed.any() else None,
     }
 
 
@@ -105,7 +108,8 @@ def main():
             print(f"pace {pace:.2f}  x{m:<4}  {r['result']:6s} {r['progress']:6.1%}  laps {laps:13s}"
                   f"  median {r['median_lat_m']} / max {r['max_lat_m']} m  recover {r['recover_s']} s"
                   f"  outside {r['outside_pct']}%  first off {r['first_off_s']} s"
-                  + (f"  grip-capped {r['grip_capped_pct']}%" if r["grip_capped_pct"] is not None else ""))
+                  + (f"  grip-capped {r['grip_capped_pct']}%  pedals governed {r['governed_pct']}%"
+                     if r["grip_capped_pct"] is not None else ""))
     if a.json:
         Path(a.json).write_text(json.dumps({"args": vars(a), "results": results}, indent=1))
 
