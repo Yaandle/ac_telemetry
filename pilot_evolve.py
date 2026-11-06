@@ -227,6 +227,9 @@ def main():
                     help="per-car steering gain mismatch up to this fraction (e.g. 0.25), plus a small bias")
     ap.add_argument("--flat-edges", action="store_true",
                     help=f"ignore the edges file: flat {ROAD_HALF} m road / {WALL} m wall, no scrub (the old sim)")
+    ap.add_argument("--seed-wall", action="store_true",
+                    help=f"with --seed-from: scale the lateral input by the seed's own wall_m (e.g. 6.96 m for the "
+                         f"rebuilt ML Track Trainer car) instead of {WALL} m, so gen 0 sees the inputs it trained on")
     a = ap.parse_args()
 
     track = TrackLine(a.track)
@@ -247,6 +250,11 @@ def main():
         pop = evolve([w], 0, rng)
         print(f"Seeded from {a.seed_from} (gen {d.get('gen', '?')} there)" if isinstance(d, dict) else
               f"Seeded from {a.seed_from}")
+        if a.seed_wall:
+            if not (isinstance(d, dict) and d.get("wall_m")):
+                raise SystemExit(f"--seed-wall: {a.seed_from} has no wall_m")
+            wall_m = float(d["wall_m"])
+            print(f"Lateral input scaled by the seed's wall_m, {wall_m:.2f} m")
     elif a.resume and out.exists():
         best = json.loads(out.read_text())
         pop = evolve([np.array(best["w"])], 0, rng)
@@ -279,6 +287,7 @@ def main():
                         "wall_m": wall_m, "layers": list(LAYERS), "track": track.meta["name"],
                         "edges": edges["file"] if edges else "flat", "scrub": scrub,
                         "edge_margin": a.edge_margin, "wall_margin": a.wall_margin, "steer_noise": a.steer_noise,
+                        "seed_from": a.seed_from,
                         "lap_s": None if np.isnan(cars.lap_time[top]) else float(cars.lap_time[top])}
                 out.write_text(json.dumps(best))
             pop = evolve([pop[i] for i in order], gen, rng)
