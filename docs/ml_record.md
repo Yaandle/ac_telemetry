@@ -14,12 +14,12 @@ Goal: an AI that drives Mount Panorama in ACC near the human 2:01–2:04 laps, t
 | | |
 |---|---|
 | **Policy** | `classical` (pure pursuit + speed envelope), `--pace 0.9` |
-| **Trained from** | not trained: geometry. Line = median of 5 flying laps, 1 Nov session (2:01.3–2:02.2), `tracks/mount_panorama.json` |
+| **Trained from** | not trained: geometry. The full laps below drove the 1 Nov line: median of 5 flying laps (2:01.3–2:02.2), now `tracks/mount_panorama_20261101.json`. `tracks/mount_panorama.json` has been the 12-lap line since 2 Nov ~18:00 (see Data sources) |
 | **Steering** | `SteerComp` with gains from `tracks/acc_steer_gain.json` |
 | **Best timed laps** | 2 consecutive laps at pace 0.9, lap 1 ACC 2:19.852 (invalid). `pilot_classical_20261102_132857.csv` |
 | **Best live result** | full lap at pace 0.9: 6.17 km in 134.4 s by frame count (≈ 140 s real; see the timing note below), starting 445 m before the line (not an ACC-timed lap). Median 0.29 m from the line, max 5.38 m, 0 s recovering, 2.0% outside the measured road. `pilot_classical_20261102_130945.csv` |
 | **Earlier full lap** | pace 0.75: 157.5 s by frame count (≈ 163 s real), median 0.32 m, max 3.07 m, never outside the measured road. `pilot_classical_20261102_105851.csv` |
-| **Best network live** | `tracks/mount_panorama.seeded.json`: 55% of a lap, twice (`pilot_mltt_20261102_105030.csv`, `..._105613.csv`) |
+| **Best network live** | `tracks/mount_panorama.seeded.json`: just under 55% of a lap, twice: 54.8% and 54.6% (`pilot_mltt_20261102_105030.csv`, `..._105613.csv`) |
 
 No network has finished a live lap yet.
 
@@ -57,10 +57,26 @@ No network has finished a live lap yet.
 | All 4 Bathurst sessions above | Road edges, `tracks/mount_panorama.edges.json` |
 | ML Track Trainer browser genome, gen 147 | `tracks/mount_panorama.mltt_gen147.json`, seed for `.seeded.json` |
 | Evolution sim | `.evolved.json`, `.seeded.json`, `.edges_seeded.json` |
+| ML Track Trainer `acc-track-import` (sliding car), gen 419, trained on its import of `acc_session_20261102_161217` | `tracks/mount_panorama.mltt_gen419.json`, seed for `.gen419_hotlap.json` and `.gen419_hotlap_w7.json` (6 Nov) |
 
 Line accuracy: distance along the line matches ACC's spline position with median 0.15 m error, 95% within 0.33 m (`track_line.py`'s line, not the dashboard export).
 
 reader.py logs 66 columns at 100 Hz (median sample gap 0.010 s). Two are `timestamp` and the `lap_time_str` text.
+
+**TC / ABS activity (checked 6 Nov).** Commit `2dab330` (1 Nov 18:40) reads ACC's float `tc` / `abs` fields ("TC in action" / "ABS in action" in ACC's shared-memory doc v1.8.12) instead of the int `tcinAction` / `absInAction`. Before it, `tc_active` and `abs_active` were 0 on every frame (`acc_session_20261101_172854`: 80,041 frames, 11,373 braking; `..._182425`: 77,361 frames, 10,446 braking). The first session recorded after it, `acc_session_20261102_161217_mount_panorama.csv`, per lap (time = ACC's lap time):
+
+| Lap | Time | TC % of lap | ABS % of lap | ABS % of braking frames | ABS % off the brakes | TC % of throttle frames | TC % off the throttle |
+|---|---|---|---|---|---|---|---|
+| 1 (out-lap) | 2:05.04 | 1.20 | 6.72 | 52.8 | 0.03 | 1.68 | 0.00 |
+| 2 | 2:03.39 | 2.16 | 5.33 | 46.3 | 0.02 | 2.70 | 0.00 |
+| 3 | 2:02.86 | 1.68 | 5.89 | 49.3 | 0.01 | 2.09 | 0.04 |
+| 4 | 2:03.57 | 2.09 | 5.10 | 45.6 | 0.00 | 2.61 | 0.04 |
+| 5 | 2:02.62 | 2.18 | 6.09 | 50.7 | 0.01 | 2.71 | 0.00 |
+| 6 | 2:03.51 | 1.96 | 5.46 | 48.2 | 0.01 | 2.48 | 0.00 |
+| 7 | 2:02.25 | 1.41 | 5.84 | 48.8 | 0.09 | 1.73 | 0.00 |
+| 8 | 2:02.90 | 2.00 | 4.60 | 43.2 | 0.02 | 2.52 | 0.00 |
+
+(braking = brake > 0.05, throttle = gas > 0.05; lap 9 was incomplete.) The flags now behave like activity, not a setting: ABS fires on about half the braking frames and almost never off the brakes, TC only on throttle. If the float fields held the TC/ABS level instead, both would read ~100%. The dashboard's per-lap aids chart counts the same flags (frames above 5 km/h), so it should now show these values.
 
 ---
 
@@ -77,7 +93,7 @@ Live logs written before 2 Nov 13:00 have no record of `--pace`. Newer ones have
 | `pilot_classical_20261102_103148` | classical | 42.5% | 91.4 s | 1.75 / 11.78 m | 21.5 s | Before SteerComp |
 | `pilot_mltt_20261102_104715` | gen 147 | 7.1% | 32.1 s | 5.79 / 12.84 m | 17.4 s | |
 | `pilot_mltt_20261102_104818` | gen 147 | 27.7% | 85.2 s | 4.49 / 22.03 m | 21.0 s | |
-| `pilot_mltt_20261102_105030` | seeded | 54.9% | 93.7 s | 1.20 / 7.57 m | 7.9 s | |
+| `pilot_mltt_20261102_105030` | seeded | 54.8% | 93.7 s | 1.20 / 7.57 m | 7.9 s | Was given as 54.9%; summing the log's distance gives 3,382 m of 6,167 m = 54.8% (6 Nov) |
 | `pilot_mltt_20261102_105613` | seeded | 54.6% | 101.3 s | 1.17 / 6.74 m | 16.4 s | |
 | `pilot_classical_20261102_105851` | classical, pace 0.75 | **100%** | 157.5 s | 0.32 / 3.07 m | 0 s | First full lap. Standing start. 0% outside measured road. |
 | `pilot_classical_20261102_130945` | classical, pace 0.9 | **100%** | 134.4 s | 0.29 / 5.38 m | 0 s | Started at s = 5722 m. 2.0% outside measured road (worst 2.34 m past). ACC steer ÷ requested 0.95–1.04 at 72–288 km/h. Pace 0.8 and 0.85 were skipped. |
@@ -150,9 +166,9 @@ Setup runs, not results: `pilot_classical_20261102_130920` (stopped at 4 s), `..
 
 | Run | Sim road | Seed | Result | Log |
 |---|---|---|---|---|
-| From scratch | flat 7.5 m / 12 m wall, no scrub | random | First lap gen 16, 1:48.47 at gen 285. Exploits the sim: 9% of the lap past 7.5 m, 15% at the grip clamp. | `evolve_mount_panorama.evolved.csv` |
+| From scratch | flat 7.5 m / 12 m wall, no scrub | random | First lap gen 16, 1:48.47 at gen 285. Exploits the sim: 9% of the lap past 7.5 m, 15% at the grip clamp (these two are not in the log: its CSV predates the off/clamp columns, so they can't be rechecked from it). | `evolve_mount_panorama.evolved.csv` |
 | Seeded | flat 7.5 m / 12 m wall, no scrub | gen 147 browser genome | First lap gen 2, 1:58.93 at gen 59 | `evolve_mount_panorama.seeded.csv` |
-| Seeded, real edges (2 Nov) | measured edges + 0.5 m, wall + 3 m, scrub 5 m/s² | `.seeded.json` | 300 gens. Laps from gen 0. Best 1:49.4 (gen 292). Best car off-road 10.1% at gen 50, 1.9% at gen 299, but 18% at the grip limit. Saved `.edges_seeded.json`. | `evolve_mount_panorama.edges_seeded.csv`, `evolve_edges_seeded_run.txt` |
+| Seeded, real edges (2 Nov) | measured edges + 0.5 m, wall + 3 m, scrub 5 m/s² | `.seeded.json` | 300 gens. Laps from gen 0. Best 1:49.4 (gen 292). Best car off-road 10.1% at gen 50, 1.9% at gen 299, and 17.2% at the grip limit (16.7–18.0% from gen 50 on; was given as 18%). Saved `.edges_seeded.json`. | `evolve_mount_panorama.edges_seeded.csv`, `evolve_edges_seeded_run.txt` |
 
 Under `--flat-edges` the new code reproduces the seeded genome's 118.9 s, so the old results still hold. With the measured edges, the seeded genome starts at 129–136 s and 3–4% off-road.
 
@@ -199,7 +215,89 @@ Live-like sim check (0.01 s steering response, 1-frame delay, ±0.05 noise on me
 
 Hotlap retraining cut time off the measured road from ~10% to 1–4% at the same pace, and both new genomes clear the out-lap (first off ≥ 44 s; the out-lap is ~15 s). At 0.9 both are faster than classical and leave the road less. The seeded Hotlap genome is the most robust.
 
-**Hotlap reset rule, from the logs:** the networks were reset the instant they invalidated during the *out-lap*; classical invalidated lap 1 at ~60% (`171101`) and kept driving. So a run has to get through the out-lap clean; after that an off only invalidates the lap.
+**Hotlap reset rule, from the logs:** the networks were reset the instant they invalidated during the *out-lap*; classical invalidated lap 1 at ~60% (`171101`) and kept driving. So a run has to get through the out-lap clean; after that an off only invalidates the lap. (6 Nov: the per-frame `acc_valid` in `171101` goes to 0 at 3,535 m, 57% of the lap; in `153930` lap 1 goes invalid at 1,560 m, 25%.)
+
+### ML Track Trainer gen 419: rebuilt sliding car (6 Nov)
+
+**The genome.** `tracks/mount_panorama.mltt_gen419.json`: Export best model from ML Track Trainer `acc-track-import` (commit `c6d4c1c`, the sliding car). Reward 27966.97, gen 419, `wall_m` 6.96, car `fitted`. The 4 Nov and 6 Nov exports hold identical weights; only `flying_lap_s` differs (124.60 → 124.70).
+
+**Its own times, re-run headless in the trainer's own `env.js`** (Node, same track import and car fit). The 2 Nov session `acc_session_20261102_161217` (7 flying laps) reproduces its reward: 27966.971 vs 27966.9709 exported, so that is the track and car it trained on. Two-lap episode from rest:
+
+| | This genome | Export field |
+|---|---|---|
+| Standing lap | **2:16.9** (136.90 s) | `lap_s` 136.53 (2:16.5): another driver in the run, not this genome |
+| Flying lap | **2:04.7** (124.70 s) | `flying_lap_s` 124.70: matches |
+| Off its 12 m road | 0 s, no wall hits | |
+| Max body slip | 21.5° | |
+| Steer above the grip steer (1×) | 10.1% of frames | |
+
+These are trainer sim times (no elevation, its own 12 m road, its own line), not comparable to your 2:01.3–2:03.6 laps. On the 1 Nov session's track and car fit (steer full lock 0.203 rad instead of 0.258) it hits the wall at 87 s, so it is sensitive to the car's steering scale.
+
+**Input layout.** Checked against `env.js observe()` and `brain.js forward()`: the same 9 inputs (speed/90, lateral/wall, heading error, look-ahead at 15/40/80/140/220 m over π/2, own steer), the same signs and weight layout as `pilot.py`. The lateral scale (`wall_m` 6.96) comes from the export. Two differences: the trainer's steer is rate-limited (`rampSteer`: 3/s away from centre, 5/s back) where `pilot.py` used a 0.10 s lag, and the trainer ramps the pedals. Added `pilot.py --net-steer ramp` (default `lag`). It changed nothing measurable: same lap times within 0.1 s and the same line error in every check below.
+
+**Transfer to the real line (`pilot.py`).**
+- `pilot.py --sim --acc-steer` (0.10 s car steering, the old default): crashed at 0.75 (64.7 s). At 0.9: 2:42.6 / 2:37.9, median 2.29 / 2.18 m, 14.4 s recovering.
+- Live-like check (`pilot_check.py`; see below), `--net-steer lag` and `ramp` the same to 0.1 s:
+
+| Pace | Mismatch | Laps (s) | Median / max line error | Outside measured edges + 0.3 m | First off |
+|---|---|---|---|---|---|
+| 0.75 | x1.0 / x0.8 | 155.7, 155.7 / 155.4, 155.4 | 1.33–1.34 / 5.4 m | 22.1–22.2% / 21.9% | 2.5–2.7 s |
+| 0.75 | x1.25 | crash at 35.5% | | 14.1% | 2.9 s |
+| 0.85 | x1.0 / x0.8 / x1.25 | 140.5 / 140.7 / 142.6–142.7 | 1.34–1.44 m | 22.1–23.8% | 2.5–2.9 s |
+| 0.9 | x1.0 / x0.8 / x1.25 | 135.3 / 135.7 / 135.0 | 1.36–1.46 m | 21.9–24.2% | 2.5–2.9 s |
+
+It reads the inputs and drives the real line (laps at every pace with no recovery at x1.0 / x0.8, unlike the raw browser exports before it), but at 3× the Hotlap genomes' line error and off the measured road a fifth of the time, first within 3 s. In Hotlap that is a reset during the out-lap.
+
+**Cause: the training road, not a pilot.py or sim-vs-live gap.** Its own trainer drive, mapped back to ACC world coordinates, is outside the measured edges + 0.3 m on **17.6%** of the standing lap and **19.5%** of the flying lap (left side 13–15%, right 4–5%). When outside, it is a median 1.26 m past the edge (95th percentile 3.56 m, max 4.84 m). The live-like check's 22% is the same behaviour. The trainer's road is 12 m wide, symmetric about its own line; the measured road is 4.0–5.2 m wide (98th percentile of where you drove). Worst 100 m stretches in its own drive: 1,800–1,900 m (100% outside), 2,500 m (94%), 2,900 m (88%), 3,400–3,800 m (56–67%), all walled sections in ACC. The trainer's line is also a median 0.83 m from `pilot.py`'s line (95th percentile 1.82 m, max 3.15 m): it rounds its 120 control points to whole pixels at 3.07 m per pixel.
+
+**Retrained Hotlap-style** (`pilot_evolve.py --seed-from tracks/mount_panorama.mltt_gen419.json --edge-margin 0.3 --wall-margin 0 --steer-noise 0.25 --gens 300`). `pilot_evolve.py` scales the lateral input by 12 m, and gen 419 trained on 6.96 m, so the run was also done with the new `--seed-wall` (keeps the seed's 6.96 m; off by default):
+
+| Run | Lateral scale | Gen 0 | First lap | Saved | At the grip limit (saved gen) | Log |
+|---|---|---|---|---|---|---|
+| `.gen419_hotlap.json` | 12 m | 27.1% of a lap | gen 6 | gen 274, 1:53.4 | 13.5% | `evolve_mount_panorama.gen419_hotlap.csv`, `evolve_gen419_hotlap_run.txt` |
+| `.gen419_hotlap_w7.json` | 6.96 m (`--seed-wall`) | 30.2% | gen 14 | gen 281, 1:53.7 | 15.2% | `evolve_mount_panorama.gen419_hotlap_w7.csv`, `evolve_gen419_hotlap_w7_run.txt` |
+
+Live-like check, current line, x1.0 / x0.8 / x1.25:
+
+| Pace | Policy | Laps (s, x1.0) | Median line error | Outside edges (x1.0 / x0.8 / x1.25) | First off | Pedals set by the envelope (x1.0) |
+|---|---|---|---|---|---|---|
+| 0.75 | gen 419 | 155.7, 155.7 | 1.34 m | 22.2 / 21.9 / crash 35.5% | 2.7 s | 42.6% |
+| 0.75 | gen 419 Hotlap, 6.96 m | 156.1, 156.0 | 0.39 m | 2.7 / 1.1 / crash 35.5% | 46.6 s | 55.0% |
+| 0.75 | gen 419 Hotlap, 12 m | 157.7, 157.8 | 1.05 m | 6.3 / 2.0 / crash 35.4% | 59.8 s | |
+| 0.75 | seeded Hotlap | 157.5, 157.5 | 0.48 m | 2.0 / 0.9 / stuck 35.0% | 60.9 s | 53.9% |
+| 0.75 | browser Hotlap | 155.4, 155.4 | 0.40 m | 4.6 / 3.8 / stuck 65.5% | 44.4 s | 55.8% |
+| 0.75 | classical | 161.0, 161.2 | 0.10 m | 3.2 / 0.0 / crash 35.4% | 61.5 s | |
+| 0.85 | gen 419 Hotlap, 6.96 m | 137.8, 137.8 | 0.44 m | 1.0 / 0.6 / crash 150.5% | 42.0 s | |
+| 0.9 | gen 419 Hotlap, 6.96 m | 130.2, 130.2 | 0.47 m | 0.3 / 0.4 / 14.5% (laps, 12.4 s recovering) | 89.1 s | |
+| 0.9 | seeded Hotlap | 129.7, 129.7 | 0.39 m | 1.0 / 1.0 / 7.8% | 79.9 s | |
+| 0.9 | browser Hotlap | 129.5, 129.6 | 0.35 m | 2.1 / 2.1 / 4.4% | 79.3 s | |
+| 0.9 | classical | 133.8, 133.8 | 0.14 m | 0.0 / 0.0 / 8.0% (laps, 10.8 s recovering) | 52.4 s (x1.25) | |
+
+At 0.75 the speed envelope sets the pedals on 43–56% of the timed-lap frames for every network: there a "network lap" is network steering with the pedals shared with the governor. Report that with any live lap.
+
+**Sliding-car check with `pilot.py`'s governor.** `pilot_check.py`'s car can't slide, and the 2 Nov live failures were slides. So each genome was also driven on the trainer's sliding car (Node, same import as above): `pilot.py`'s speed envelope (network pedal unless over pace × your trace + 1 m/s), grip limit 2.0, launch at ≥ 0.7 throttle to 30 km/h, the genome's own lateral scale and steer model, two laps from rest at the line. Not modelled: `pilot.py`'s classical recovery and SteerComp. Scored against the real line and measured edges:
+
+| Pace | Genome | Result | Laps (standing, flying) | Median line error | Outside edges + 0.3 m | Max slip |
+|---|---|---|---|---|---|---|
+| 0.75 | gen 419 (ramp) | **2 laps** | 166.9, 156.7 | 1.34 m | 20.4% | 2° |
+| 0.75 | gen 419 Hotlap, 6.96 m | **2 laps** | 166.2, 156.9 | 0.87 m | 9.2% (first off 14.1 s) | 2° |
+| 0.75 | seeded Hotlap | wall at 88% (144.5 s) | | 0.90 m | 1.9% | 51° |
+| 0.75 | browser Hotlap | stalled at 88% (153.7 s) | | 1.13 m | 13.3% | 78° |
+| 0.75 | gen 419 Hotlap, 12 m | doesn't pull away: asks for 0.75 steer at rest, which the trainer's tyre model won't roll with (an artefact; it launches in `pilot_sim.py`) | | | | |
+| 0.85 | gen 419 | **2 laps** | 151.6, 140.5 | 1.32 m | 20.5% | 15° |
+| 0.85 | gen 419 Hotlap, 6.96 m | wall at 88% (130.1 s) | | 0.83 m | 9.1% | 77° |
+| 0.85 | seeded Hotlap | stalled at 88% | | 0.94 m | 5.4% | 81° |
+| 0.85 | browser Hotlap | stalled at 24% | | 1.56 m | 15.3% | 78° |
+| 0.9 | gen 419 | wall at 63% (100 s) | | 1.38 m | 23.5% | 59° |
+| 0.9 | gen 419 Hotlap, 6.96 m | wall at 33% (54.6 s) | | 0.91 m | 12.8% | 31° |
+| 0.9 | seeded Hotlap | wall at 88% (122.9 s) | | 0.87 m | 1.5% | 83° |
+| 0.9 | browser Hotlap | wall at 24% (42.8 s) | | 1.48 m | 6.4% | 45° |
+
+Ungoverned (each genome on its own pedal, as `pilot_evolve.py` trains them), every Hotlap retrain, the two 2 Nov ones included, hits the wall within 21 s on the sliding car (slip up to 81°); only gen 419 laps. So the Hotlap retrain fixed the road edges and cost the sliding-car stability gen 419 was trained for, which the governor at 0.75 hides. (This trainer car gave a pure-pursuit driver at 0.9 a 2:18.0 flying lap against classical's 2:17.344 real-clock lap live, ACC-invalid. It has never been checked against a live network run.)
+
+**Ranking for the live tests:** at 0.75 only gen 419 and its 6.96 m Hotlap retrain lap in both sims. The retrain stays on the measured road (2.7% / 9.2% outside in the two sims, first off ≥ 14 s) where gen 419 doesn't (20–22%, first off at 2.7 s in `pilot_check`). Neither sim models elevation, kerbs or ACC's real walls. At 0.9 every network crashes on the sliding car.
+
+**`pilot_check.py` vs the 2 Nov live-like table.** The 2 Nov check was done with a script that isn't in the repo. `pilot_check.py` re-implements it from the description, with SteerComp starting from the learned gains as live (from neutral, the joystick saturates out of the first corner and every policy leaves the road within 5 s). It reproduces the seeded Hotlap rows at x1.0 / x0.8 (0.9: 129.7 s, 0.39 m, 1.0%, first off 80 s, vs 129.8 s, 0.36 m, 1.0%, 80 s), but not the x1.25 rows: at 0.75 every policy, classical included, crashes or sticks at ~35% of the lap at x1.25, where the 2 Nov table has them lapping. Compare policies within one harness; the tables above all use `pilot_check.py` (seed 0).
 
 ### Policy sim comparison (current line, `pilot.py --sim`)
 
@@ -231,14 +329,29 @@ Retraining on real edges halved the seeded network's median line error at the sa
 
 | Gap | Effect live | Fix | What changed |
 |---|---|---|---|
-| ACC scales gamepad steer with speed. Gain ≈ 0.5 at 36–72 km/h, 0.21–0.24 at 144–180, 0.11–0.22 at 180–216. | Car ran wide in every fast corner. Classical reached 22% and 43%. | SteerComp (learned per-band gain), `pilot_sim.py --acc-steer` to reproduce it | Measured steer within 1–6% of requested below 180 km/h, 10% above. First full classical lap. |
+| ACC scales gamepad steer with speed. Gain ≈ 0.5 at 36–72 km/h, 0.21–0.24 at 144–180, 0.11–0.22 at 180–216. Rechecked 6 Nov (median of ACC steer ÷ last frame's joystick, joystick 0.05–0.95, not recovering) in the two pre-SteerComp logs `184553` / `103148`: 0.88 / 0.95 at 0–36 km/h, 0.54 / 0.54 at 36–72, 0.36 / 0.41 at 72–108, 0.23 / 0.27 at 108–144, 0.17 / 0.20 at 144–180, 0.14 / 0.15 at 180–216. That method gives lower values at 144–180 than the 0.21–0.24 above. | Car ran wide in every fast corner. Classical reached 22% and 43%. | SteerComp (learned per-band gain), `pilot_sim.py --acc-steer` to reproduce it | Measured steer within 1–6% of requested below 180 km/h, 10% above. First full classical lap. |
 | GA sim road: flat 7.5 m half-width, free grip clamp | From-scratch genome laps 1:48.5 in sim (faster than any human lap) by cutting corners and riding the grip limit | Measured per-point edges + scrub (2 Nov) | Corner cutting mostly gone (seeded at 0.85: 32.6% → 6.8% off the measured road). Grip-limit riding remains (18%). Live test pending. |
 | No elevation, kerbs, weight transfer or oversteer in the sim | Unknown. Possibly the 22% spin on the climb to The Cutting. | none yet | |
 | Seeded network leaves the measured road 12–23% of the time live | Ends in recovery around 55% | Retrain on real edges | _pending_ |
+| ML Track Trainer road: 12 m wide, symmetric about a line rounded to 3.07 m pixels; the measured road is 4.0–5.2 m | gen 419 is off the measured road 18–20% of its own trainer laps and 22% in the live-like check (6 Nov) | Hotlap retrain in `pilot_evolve.py` with `--seed-wall` | 2.7% off at 0.75 in the live-like check, but the retrain spins on the trainer's sliding car without the governor. Live test pending. Better fix: train in the trainer on the measured edges |
+| `pilot_evolve.py` / `pilot_sim.py` car can't slide | Retraining there loses sliding-car stability (every Hotlap retrain hits the wall within 21 s on the trainer car, ungoverned) | Governor at 0.75; sliding-car check before live runs | _pending live_ |
 
 ---
 
 ## Next tests
+
+0. **Live network runs (planned 6 Nov).** Each at pace 0.75, `--manual-gears` (ACC auto gearbox off, auto-clutch on), grip limit 2.0 (default; no network has run live with it yet), `--laps 1`. Stop at the first failure and read the log before the next run. Predictions are from the two checks above:
+
+| # | Genome | Command | Prediction |
+|---|---|---|---|
+| 1 | gen 419 | `python pilot.py --policy mltt --weights tracks/mount_panorama.mltt_gen419.json --net-steer ramp --pace 0.75 --manual-gears` | Laps in both sims, but off the measured road 20–22% of the time, first within 3 s: a Hotlap reset in the out-lap |
+| 2 | gen 419 Hotlap, 6.96 m | `python pilot.py --policy mltt --weights tracks/mount_panorama.gen419_hotlap_w7.json --pace 0.75 --manual-gears` | Main candidate. Laps in both sims, 2.7% / 9.2% off the measured road, median 0.39 m in the live-like check |
+| 3 | seeded Hotlap | `python pilot.py --policy mltt --weights tracks/mount_panorama.edges_seeded_hotlap.json --pace 0.75 --manual-gears` | Laps in the live-like check (2.0% off), hits the wall at 88% on the sliding car. Ran live once at 0.9 without the grip limit: reset at 11.4 s (`182532`) |
+| 4 | browser Hotlap | `python pilot.py --policy mltt --weights tracks/mount_panorama.browser2_hotlap.json --pace 0.75 --manual-gears` | Laps in the live-like check (4.6% off), stalls at 88% on the sliding car. Ran live once at 0.9 without the grip limit: 33.7% of distance (`182630`) |
+
+   Session: Hotlap resets the car at the first off during the out-lap, which ends run 1 within seconds if the prediction holds. A Practice session lets a run carry on past an off, with ACC marking the lap invalid (`isValidLap`, recorded per lap). A lap completed that way is a completed lap, not a valid one, and is reported as such.
+
+   Whichever completes a lap: 0.8, then 0.85. Not 0.9 yet: every network hits the wall at 0.9 on the sliding car. A lap with recovery time > 0 had classical steering for those seconds; report it.
 
 1. Live: `.edges_seeded.json` vs classical at the same pace (0.75), with SteerComp. Sim prediction: both lap, network median ~0.7 m vs classical ~0.2 m.
 2. Pace ladder 0.8 → 0.85 → 0.9 → 0.95. Record which policy completes each step. Classical: 0.75 ✓, 0.9 ✓ (and 2 consecutive timed laps, ACC 2:19.852 for the first; lap 1 invalid). Next 0.95 (sim: 2:13.1, 12.5% outside the road, 2.3 s recovering, so expect trouble).
