@@ -27,10 +27,15 @@
     document.querySelectorAll('#tabs button').forEach((x) => x.classList.toggle('on', x === b));
     document.querySelectorAll('.view-body').forEach((v) => v.classList.toggle('hidden', v.id !== 'v-' + view));
     document.querySelectorAll('.map-only').forEach((x) => x.classList.toggle('hidden', view !== 'map'));
-    if (view === 'map') AccDash.refreshMap(); else render();
+    if (view === 'map') { AccDash.refreshMap(); renderMapMore(); } else render();
   });
-  AccDash.hooks.push(() => { if (view !== 'map') render(); });
-  window.addEventListener('resize', () => { if (view !== 'map' && S.data) render(); });
+  // Called after every change; why === 'cursor' when only the inspected point moved
+  AccDash.hooks.push((why) => {
+    if (view === 'map') renderMapMore(why);
+    else if (why !== 'cursor') render();
+    else if (view === 'driving') renderInputs();
+  });
+  window.addEventListener('resize', () => { if (!S.data) return; if (view === 'map') renderMapMore(); else render(); });
 
   function render() {
     if (!S.data) return;
@@ -84,7 +89,31 @@
       if (s.dots) pts.forEach(([x, y]) => el('circle', { class: 'dot', cx: f.X(x), cy: f.Y(y), r: 2.6, fill: s.colour }, svg));
     });
     legend(svg, series.filter((s) => s.label), f);
+    if (o.pick) linkCursor(svg, f, o.xRange);
+    return f;
   }
+
+  // Distance charts: show the map's inspected point and set it on click
+  function linkCursor(svg, f, xr) {
+    if (S.cursor !== null && S.cursor >= xr[0] && S.cursor <= xr[1]) {
+      el('line', { class: 'cur', x1: f.X(S.cursor), y1: f.m.t, x2: f.X(S.cursor), y2: f.H - f.m.b }, svg);
+    }
+    svg.style.cursor = 'crosshair';
+    svg.onclick = (e) => {
+      const px = e.clientX - svg.getBoundingClientRect().left;
+      AccDash.setCursor(xr[0] + (px - f.m.l) / (f.W - f.m.l - f.m.r) * (xr[1] - xr[0]));
+    };
+  }
+
+  const kmTicks = () => range(0, Math.floor(S.info.lapMeters / 1000)).map((k) => k * 1000);
+  const kmFmt = (v) => (v / 1000).toFixed(0) + ' km';
+  const bestLap = () => S.info.list.find((L) => L.lap === S.info.best);
+  const flyingLaps = () => S.info.list.filter((L) => L.flying && S.traces[L.lap]).map((L) => L.lap);
+  // Best lap drawn last so it sits on top
+  const lapOrder = (laps) => laps.slice().sort((a, b) => (a === S.info.best) - (b === S.info.best));
+  const lapSeries = (laps, pts) => lapOrder(laps).map((lap) => ({
+    label: 'L' + lap + (lap === S.info.best ? ' best' : ''), colour: S.colours[lap],
+    width: lap === S.info.best ? 2 : 1.1, pts: pts(lap) }));
 
   // items: [{ label, value, cls, text }]
   function barChart(svg, items, o) {
@@ -114,6 +143,115 @@
   function empty(svg, msg) {
     svg.innerHTML = '';
     txt(svg, 12, 20, msg || 'No data for this chart in this CSV.');
+  }
+
+  /* ---------- map tab: full-lap charts below the map ---------- */
+
+  function renderMapMore(why) {
+    if (!S.data) return;
+    const L = S.info.lapMeters, best = bestLap();
+    if (why !== 'cursor') {
+      const tag = `L${best.lap} · ${fmtLap(best.timeS)}`;
+      $('m-best-a').textContent = $('m-best-b').textContent = tag;
+      trackMaps();
+    }
+    const laps = flyingLaps(), xo = { xRange: [0, L], xTicks: kmTicks(), xFmt: kmFmt, pick: true };
+    lineChart($('m-speed'), lapSeries(laps, (lap) => S.traces[lap].map((p) => [p.d, p.speed])), xo);
+    const ref = S.timeGrid[S.info.best], G = AccDash.GRID_M;
+    lineChart($('m-delta'), lapSeries(laps, (lap) => Array.from(S.timeGrid[lap], (t, k) => [k * G, t - ref[k]])),
+      Object.assign({ zero: true, yUnit: ' s' }, xo));
+  }
+
+  // Best lap drawn in world coordinates, coloured per segment: speed, and throttle (+) / brake (−)
+  function trackMaps() {
+    const pts = S.traces[S.info.best];
+    const vs = pts.map((p) => p.speed).sort((a, b) => a - b);
+    const lo = vs[Math.floor(vs.length * 0.02)], hi = vs[Math.floor(vs.length * 0.98)];
+    const sc = (v) => AccDash.speedColour(v, lo, hi);
+    drawTrackMap($('m-tm-speed'), pts, (p) => sc(Math.round(p.speed / 5) * 5));
+    $('m-sp-lo').textContent = Math.round(lo) + ' km/h'; $('m-sp-hi').textContent = Math.round(hi);
+    $('m-sp-bar').style.background = `linear-gradient(90deg, ${[0, .25, .5, .75, 1].map((t) => sc(lo + t * (hi - lo))).join(',')})`;
+    drawTrackMap($('m-tm-pedal'), pts, (p) => pedalScale(Math.round((p.gas - p.brake) * 10) / 10));
+    $('m-pd-bar').style.background = `linear-gradient(90deg, ${[-1, -.5, 0, .5, 1].map(pedalScale).join(',')})`;
+  }
+
+  // −1 full brake (red) … 0 coasting (pale) … +1 full throttle (green)
+  function pedalScale(v) {
+    const red = [192, 57, 43], pale = [232, 226, 196], green = [42, 128, 72];
+    const [a, b, t] = v < 0 ? [pale, red, -v] : [pale, green, v];
+    return `rgb(${a.map((x, i) => Math.round(x + (b[i] - x) * Math.min(1, t))).join(',')})`;
+  }
+
+  function drawTrackMap(svg, pts, colourOf) {
+    svg.innerHTML = '';
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const pad = Math.max(x1 - x0, y1 - y0) * 0.08;
+    svg.setAttribute('viewBox', `${x0 - pad} ${y0 - pad} ${x1 - x0 + 2 * pad} ${y1 - y0 + 2 * pad}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    const buckets = {};
+    for (let k = 1; k < pts.length; k++) {
+      const c = colourOf(pts[k]);
+      (buckets[c] = buckets[c] || []).push(`M${pts[k - 1].x.toFixed(1)} ${pts[k - 1].y.toFixed(1)}L${pts[k].x.toFixed(1)} ${pts[k].y.toFixed(1)}`);
+    }
+    for (const c in buckets) el('path', { d: buckets[c].join(''), stroke: c }, svg);
+    // km labels pushed outward from the centre, as on the main map
+    const cx = xs.reduce((s, v) => s + v, 0) / xs.length, cy = ys.reduce((s, v) => s + v, 0) / ys.length;
+    const fs = (x1 - x0 + 2 * pad) / 38;
+    for (let km = 0; km * 1000 < S.info.lapMeters - 200; km++) {
+      const p = pts.reduce((b, q) => (Math.abs(q.d - km * 1000) < Math.abs(b.d - km * 1000) ? q : b), pts[0]);
+      let dx = p.x - cx, dy = p.y - cy; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+      if (!km) el('circle', { cx: p.x, cy: p.y, r: fs * 0.35, fill: 'var(--ink)' }, svg);
+      txt(svg, p.x + dx * fs * 1.2, p.y + dy * fs * 1.2 + fs * 0.35, km ? km + ' km' : 'S/F',
+        { class: 'km', 'font-size': fs, 'text-anchor': dx >= 0 ? 'start' : 'end' });
+    }
+  }
+
+  /* ---------- driving: best lap inputs and lap consistency ---------- */
+
+  function renderInputs() {
+    const best = bestLap(), pts = S.traces[best.lap], L = S.info.lapMeters, d = S.data;
+    $('d-in-lap').textContent = `L${best.lap} · ${fmtLap(best.timeS)}`;
+    const xo = { xRange: [0, L], xTicks: kmTicks(), xFmt: kmFmt, pick: true };
+    const ink = 'var(--ink)';
+    lineChart($('d-in-speed'), [{ pts: pts.map((p) => [p.d, p.speed]), colour: '#2f6db5' }], Object.assign({ yUnit: '' }, xo));
+    lineChart($('d-in-steer'), [{ pts: pts.map((p) => [p.d, p.steer]), colour: '#c77a1e', width: 1.1 }],
+      Object.assign({ zero: true }, xo));
+    lineChart($('d-in-gear'), [{ pts: pts.map((p) => [p.d, p.gear]), colour: ink, step: true, width: 1.2 }],
+      Object.assign({ yTicks: [1, Math.round(Math.max(...pts.map((p) => p.gear)))], yFmt: (v) => String(Math.round(v)) }, xo));
+
+    // Throttle up, brake down, with TC / ABS intervention shaded behind
+    const svg = $('d-in-pedal');
+    const f = frame(svg, [0, L], [-1, 1], Object.assign({ tight: true, zero: true, yTicks: [-1, 0, 1], yFmt: (v) => v > 0 ? 'thr' : v < 0 ? 'brk' : '0' }, xo));
+    const shade = (col, fill) => {
+      if (!d.has(col)) return;
+      const c = d.col(col);
+      let start = null;
+      pts.forEach((p, k) => {
+        const on = c[p.i] > 0;
+        if (on && start === null) start = p.d;
+        if ((!on || k === pts.length - 1) && start !== null) {
+          el('rect', { x: f.X(start), y: f.m.t, width: Math.max(1, f.X(p.d) - f.X(start)), height: f.H - f.m.t - f.m.b, fill }, svg);
+          start = null;
+        }
+      });
+    };
+    shade('tc_active', 'rgba(142,91,181,.25)');
+    shade('abs_active', 'rgba(199,154,30,.3)');
+    const area = (sign, key) => 'M' + f.X(pts[0].d).toFixed(1) + ' ' + f.Y(0).toFixed(1) +
+      pts.map((p) => `L${f.X(p.d).toFixed(1)} ${f.Y(sign * p[key]).toFixed(1)}`).join('') +
+      `L${f.X(pts[pts.length - 1].d).toFixed(1)} ${f.Y(0).toFixed(1)}Z`;
+    el('path', { d: area(1, 'gas'), style: 'fill:#7fc480;stroke:none' }, svg);
+    el('path', { d: area(-1, 'brake'), style: 'fill:#e07a6e;stroke:none' }, svg);
+    linkCursor(svg, f, [0, L]);
+  }
+
+  function renderConsistency() {
+    const rows = S.lapStats.rows;
+    const xo = { xLabel: 'lap', xTicks: rows.map((r) => r.lap), xFmt: (v) => String(v) };
+    [['d-cs-avg', 'avg', '#2f6db5'], ['d-cs-ft', 'fullThrottle', '#3a9a5b'], ['d-cs-br', 'braking', '#c0392b'],
+     ['d-cs-co', 'coasting', '#6b6b6b'], ['d-cs-ov', 'overlap', '#8e5bb5'], ['d-cs-fuel', 'fuelUsed', '#8a5a3b']]
+      .forEach(([id, key, colour]) => lineChart($(id), [{ pts: rows.map((r) => [r.lap, r[key]]), colour, dots: true, width: 1.6 }], xo));
   }
 
   /* ---------- per-lap statistics ---------- */
@@ -228,6 +366,8 @@
   }
 
   function renderDriving() {
+    renderInputs();
+    renderConsistency();
     const frames = selectedFrames(1);
     if (!frames.length) {
       ['d-gg', 'd-gas', 'd-brk', 'd-steer', 'd-gear'].forEach((id) => empty($(id), 'Select laps in the Laps table.'));
