@@ -170,20 +170,20 @@ class PolicyLoader:
     def _load_ga(ga_path: str):
         """Load GA model from weights"""
         weights_path = ga_path.replace('ga_model.pkl', 'ga_weights.npy')
-        
+
         if Path(weights_path).exists():
             print(f"  Loading GA weights from: {weights_path}")
             weights = np.load(weights_path)
             state_dim = 17
             action_dim = 3
-            
+
             def decode_individual(individual):
                 """Decode flattened individual into weights and bias"""
                 split_point = action_dim * state_dim
                 w = individual[:split_point].reshape(action_dim, state_dim)
                 b = individual[split_point:]
                 return w, b
-            
+
             def predict(state_norm):
                 if state_norm.ndim == 1:
                     state_norm = state_norm.reshape(1, -1)
@@ -193,7 +193,7 @@ class PolicyLoader:
                 brake = float(np.clip(predictions[0, 1], 0, 1))
                 steer = float(np.clip(predictions[0, 2], -1, 1))
                 return gas, brake, steer
-            
+
             return predict, "Genetic Algorithm"
         else:
             raise FileNotFoundError(f"GA weights not found at {weights_path}")
@@ -232,41 +232,41 @@ class AIDriver:
 
         def forward(self, x):
             return self.net(x)
-    
+
     def __init__(self, policy_type: str, policy_kwargs: dict = None):
         policy_kwargs = policy_kwargs or {}
         self.policy_predict, self.policy_name = PolicyLoader.load(policy_type, MODEL_DIR, **policy_kwargs)
         self.online = '--online' in sys.argv
         self.replay_buffer = deque(maxlen=5000)
         self.episode = []
-        
+
         # Load normalization parameters
         self.norm_min = np.load(NORM_DIR / "normalization_min.npy")
         self.norm_max = np.load(NORM_DIR / "normalization_max.npy")
         self.norm_range = np.maximum(self.norm_max - self.norm_min, 1e-6)
-        
+
         # Gamepad and shared memory
         self.gamepad = vg.VX360Gamepad()
         self.physics_shm = mmap.mmap(-1, READ_BLOCK_SIZE, PHYSICS_SHM)
         self.graphics_shm = mmap.mmap(-1, GRAPHICS_BLOCK_SIZE, GRAPHICS_SHM)
-        
+
         # Control smoothing
         self.s_gas = 0.0
         self.s_brake = 0.0
         self.s_steer = 0.0
-        
+
         # Tracking
         self.distance_tracker = DistanceTracker()
         self.last_completed_laps = 0
         self.start_time = time.time()
         self.frames = 0
         self.last_crash_frame = -1000  # For crash cooldown
-        
+
         # Test mode
         self.test_mode = False
         self.test_laps_target = 0
         self.metrics_collector = MetricsCollector()
-        
+
         # Policy state
         self.policy_enabled = True
         self.prev_state = None
@@ -279,7 +279,7 @@ class AIDriver:
             self.ga_weights_path = self.ga_path.replace('ga_model.pkl', 'ga_weights.npy')
             self.state_dim = 17
             self.action_dim = 3
-            
+
             # Load existing genome if available
             if Path(self.ga_weights_path).exists():
                 self.current_genome = np.load(self.ga_weights_path)
@@ -287,25 +287,25 @@ class AIDriver:
             else:
                 # Initialize genome with STRONG throttle bias for movement
                 genome_size = self.action_dim * self.state_dim + self.action_dim
-                
+
                 # Weights: small random values
                 weights = np.random.randn(self.action_dim * self.state_dim) * 0.05
-                
+
                 # Biases: CRITICAL - ensure positive throttle by default
                 biases = np.array([
                     0.6,   # Gas bias: start with 60% throttle
-                    0.0,   # Brake bias: no braking initially  
+                    0.0,   # Brake bias: no braking initially
                     0.0    # Steer bias: centered steering
                 ])
-                
+
                 self.current_genome = np.concatenate([weights, biases])
                 print(f"🔄 Initialized new GA genome with throttle bias (gas=0.6)")
-                
+
                 # Save this baseline immediately so it's not lost
                 MODEL_DIR.mkdir(exist_ok=True)
                 np.save(self.ga_weights_path, self.current_genome)
                 print(f"💾 Saved baseline genome to {self.ga_weights_path}")
-            
+
             # GA evolution tracking
             self.best_reward = float('-inf')
             self.best_genome = self.current_genome.copy()
@@ -333,14 +333,14 @@ class AIDriver:
             return struct.unpack_from('<i', data, offset)[0]
         except:
             return 0
-        
+
     def _decode_ga_genome(self):
         """Helper to decode GA genome into weights and bias"""
         split_point = self.action_dim * self.state_dim
         w = self.current_genome[:split_point].reshape(self.action_dim, self.state_dim)
         b = self.current_genome[split_point:]
         return w, b
-        
+
     def store_transition(self, state, action, reward, next_state, done):
         if self.policy_name.lower().startswith('dql') or 'dql' in self.policy_name.lower():
             self.replay_buffer.append((state, action, reward, next_state, done))
@@ -360,16 +360,16 @@ class AIDriver:
         """Hill-climbing GA evolution with adaptive mutation"""
         if not episodes or len(episodes[0]) == 0:
             return
-        
+
         # Calculate episode reward
         total_reward = sum(r for _, _, r, _, _ in episodes[0])
-        
+
         # Compare with best
         if total_reward > self.best_reward:
             self.best_reward = total_reward
             self.best_genome = self.current_genome.copy()
             print(f"🏆 New best GA genome! Reward: {total_reward:.2f}")
-            
+
             # Save the best genome
             MODEL_DIR.mkdir(exist_ok=True)
             np.save(self.ga_weights_path, self.best_genome)
@@ -377,7 +377,7 @@ class AIDriver:
             # Revert to best and mutate
             print(f"⚠️  Reward {total_reward:.2f} < Best {self.best_reward:.2f}, reverting")
             self.current_genome = self.best_genome.copy()
-        
+
         # Adaptive mutation - reduce mutation as performance improves
         if total_reward > 50:
             mutation_rate = 0.05  # Fine-tuning
@@ -385,11 +385,11 @@ class AIDriver:
             mutation_rate = 0.1   # Exploration
         else:
             mutation_rate = 0.2   # Heavy exploration when stuck
-        
+
         # Apply mutation for next episode
         noise = np.random.randn(*self.current_genome.shape) * mutation_rate
         self.current_genome = self.current_genome + noise
-        
+
         # Ensure gas bias stays positive (critical for movement)
         split_point = self.action_dim * self.state_dim
         gas_bias_idx = split_point  # First bias is gas
@@ -413,13 +413,13 @@ class AIDriver:
 
         pred_actions = self.dql_model(states)
         pred_q = torch.sigmoid(pred_actions[:, :2]).mean(dim=1, keepdim=True)
-        
+
         loss = self.dql_loss_fn(pred_q, target_q)
 
         self.dql_optimizer.zero_grad()
         loss.backward()
         self.dql_optimizer.step()
-        
+
         # Update target network periodically
         self.dql_update_counter += 1
         if self.dql_update_counter % self.dql_target_update_freq == 0:
@@ -428,47 +428,47 @@ class AIDriver:
     def read_damage(self, physics_data: bytes) -> list:
         return [self._read_f(physics_data, DAMAGE_OFFSET + i * 4) for i in range(5)]
 
-    def detect_crash(self, speed_kmh: float, gas: float, brake: float, steer: float, 
+    def detect_crash(self, speed_kmh: float, gas: float, brake: float, steer: float,
                      wheel_slip: list, suspension: list, damage: list) -> bool:
         # Crash cooldown - only detect once every 3 seconds
         if (self.frames - self.last_crash_frame) < 300:
             return False
-        
+
         # Actual damage
         if any(d > 0.01 for d in damage):
             self.last_crash_frame = self.frames
             return True
-        
+
         # Don't trigger crash detection in first 5 seconds (pit start grace period)
         if self.frames < 500:  # 5 seconds at 100Hz
             return False
-        
+
         # Stuck detection - only after grace period and if applying throttle
         if speed_kmh < 5.0 and gas > 0.5 and self.frames > 1000:  # After 10 seconds
             self.last_crash_frame = self.frames
             return True
-        
+
         # Extreme wheel slip
         slip_std = np.std(wheel_slip)
         if slip_std > 0.8:  # Increased threshold
             self.last_crash_frame = self.frames
             return True
-        
+
         # Extreme suspension compression (hard impact)
         susp_std = np.std(suspension)
         if susp_std > 0.08:  # Increased threshold
             self.last_crash_frame = self.frames
             return True
-        
+
         return False
-    
+
     def read_telemetry(self) -> Tuple[np.ndarray, float]:
         """Read telemetry and return NORMALIZED state + speed"""
         self.physics_shm.seek(0)
         physics_data = self.physics_shm.read(READ_BLOCK_SIZE)
         self.graphics_shm.seek(0)
         graphics_data = self.graphics_shm.read(GRAPHICS_BLOCK_SIZE)
-        
+
         speed_kmh = self._read_f(physics_data, SPEED_OFFSET)
         speed_ms = speed_kmh / 3.6
         rpm = self._read_i(physics_data, RPM_OFFSET)
@@ -478,19 +478,19 @@ class AIDriver:
         vz = self._read_f(physics_data, VELOCITY_OFFSET + 8)
         ax = self._read_f(physics_data, ACCEL_OFFSET)
         az = self._read_f(physics_data, ACCEL_OFFSET + 8)
-        
+
         elapsed = time.time() - self.start_time
         completed_laps = self._read_i(graphics_data, GRAPHICS_COMPLETED_LAPS)
         distance = self.distance_tracker.update(speed_ms, elapsed)
         lap_fraction = self.distance_tracker.get_lap_fraction()
-        
+
         if completed_laps > self.last_completed_laps:
             self.distance_tracker.mark_lap_complete()
             self.last_completed_laps = completed_laps
-        
+
         wheel_slip = [self._read_f(physics_data, WHEEL_SLIP_OFFSET + i*4) for i in range(4)]
         suspension = [self._read_f(physics_data, SUSPENSION_TRAVEL_OFFSET + i*4) for i in range(4)]
-        
+
         state = build_state_from_memory(
             speed_ms=speed_ms, accel_longitudinal=ax, accel_lateral=az,
             gear=gear, rpm=rpm, lap_fraction=lap_fraction,
@@ -500,13 +500,13 @@ class AIDriver:
             suspension_travel_fl=suspension[0], suspension_travel_fr=suspension[1],
             suspension_travel_rl=suspension[2], suspension_travel_rr=suspension[3]
         )
-        
+
         # Clip to valid range
         state = np.clip(state, self.norm_min, self.norm_max)
-        
+
         # NORMALIZE the state
         state_norm = (state - self.norm_min) / self.norm_range
-        
+
         return state_norm, speed_kmh
 
     def predict(self, state_norm):
@@ -522,11 +522,11 @@ class AIDriver:
             gas = float(np.clip(pred[0], 0, 1))
             brake = float(np.clip(pred[1], 0, 1))
             steer = float(np.clip(pred[2], -1, 1))
-            
+
             # Debug output for first 10 frames to verify throttle output
             if self.frames < 10:
                 print(f"   Frame {self.frames}: Raw pred=[{pred[0]:.3f}, {pred[1]:.3f}, {pred[2]:.3f}] -> gas={gas:.3f}")
-            
+
             return gas, brake, steer
 
         # Linear / MLP policy
@@ -549,68 +549,68 @@ class AIDriver:
         gas = 0.0 if gas < DEADZONE_GAS else gas
         brake = 0.0 if brake < DEADZONE_BRAKE else brake
         steer = 0.0 if abs(steer) < DEADZONE_STEER else steer
-        
+
         # CRITICAL FIX: Ensure minimum throttle at low speeds
         if speed_kmh < 5.0:  # Changed from 2.0 to 5.0 for better startup
             gas = max(gas, 0.5)  # Changed from 0.35 to 0.5 for stronger initial acceleration
             brake = 0.0
-        
+
         if gas > 0.02 and brake > 0.02:
             if gas >= brake:
                 brake = 0.0
             else:
                 gas = 0.0
-        
+
         if brake > 0.1:
             gas = 0.0
-        
+
         if speed_kmh > 80.0:
             attenuation = max(0.25, 1.0 - (speed_kmh - 80.0) / 200.0)
             steer *= attenuation
-        
+
         if speed_kmh > 200:
             steer = np.clip(steer, -0.4, 0.4)
-        
+
         if speed_kmh > 250:
             steer = np.clip(steer, -0.25, 0.25)
-        
+
         gas = np.clip(gas, 0.0, 1.0)
         brake = np.clip(brake, 0.0, 1.0)
         steer = np.clip(steer, -1.0, 1.0)
-        
+
         self.gamepad.right_trigger_float(gas)
         self.gamepad.left_trigger_float(brake)
         self.gamepad.left_joystick_float(steer, 0.0)
         self.gamepad.update()
-        
+
         return gas, brake, steer
-    
+
     def hot_lap_start(self, initial_state: np.ndarray):
         """Replay pit exit sequence from CSV recording"""
         print("🏁 Pit start - replaying from CSV")
-        
+
         pad = self.gamepad
-        
+
         # Car ignition
         pad.press_button(vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
         pad.update()
         time.sleep(0.05)
         pad.release_button(vg.XUSB_BUTTON.XUSB_GAMEPAD_X)
         pad.update()
-        
+
         # Launch with clutch
         pad.press_button(vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
         pad.right_trigger_float(1)
         pad.update()
         time.sleep(0.3)
-        
+
         # Shift to 2nd gear
         pad.press_button(vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
         pad.update()
         time.sleep(0.075)
         pad.release_button(vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
         pad.update()
-        
+
 
 
     def run(self):
@@ -620,7 +620,7 @@ class AIDriver:
         print(f"🚗 Starting AI Driver: {self.policy_name}")
         print(f"📊 Test mode: {self.test_mode} | Target laps: {self.test_laps_target}")
         print(f"🔄 Online learning: {self.online}")
-        
+
         # Start the car and execute pit exit (NO DELAY - start immediately)
         try:
             state_norm, _ = self.read_telemetry()
@@ -628,17 +628,17 @@ class AIDriver:
         except Exception as e:
             print(f"⚠️  Could not replay pit exit: {e}")
             print("   Continuing with live control...\n")
-        
+
         try:
             while True:
                 loop_start = time.time()
-                
+
                 # --------------------------------------------------
                 # 1. READ TELEMETRY (now returns normalized state)
                 # --------------------------------------------------
                 try:
                     state_norm, speed_kmh = self.read_telemetry()
-                    
+
                     self.physics_shm.seek(0)
                     physics_data = self.physics_shm.read(READ_BLOCK_SIZE)
                     wheel_slip = [self._read_f(physics_data, WHEEL_SLIP_OFFSET + i*4) for i in range(4)]
@@ -683,7 +683,7 @@ class AIDriver:
                 # --------------------------------------------------
                 lap_idx = POLICY_FEATURES.index('lap_fraction')
                 lap_fraction = float(state_norm[lap_idx])
-                
+
                 lap_delta = lap_fraction - self.prev_lap_fraction
                 if lap_delta < -0.5:
                     lap_delta = 0.0  # lap reset protection
@@ -692,7 +692,7 @@ class AIDriver:
                 reward = lap_delta * 100.0  # Progress is primary
                 reward += (speed_kmh / 200.0) * 2.0  # Speed bonus (normalized)
                 reward -= abs(steer_final - self.prev_steer) * 0.5  # Smoothness
-                
+
                 # Check for lap completion
                 prev_completed_laps = self.last_completed_laps
                 self.graphics_shm.seek(0)
@@ -736,11 +736,11 @@ class AIDriver:
                 # 9. FRAME COUNTER AND TEST MODE EXIT
                 # --------------------------------------------------
                 self.frames += 1
-                
+
                 if self.test_mode and self.last_completed_laps >= self.test_laps_target:
                     print(f"\n✅ Test complete: {self.test_laps_target} laps finished")
                     break
-                
+
                 # Status update every 500 frames
                 if self.frames % 500 == 0:
                     elapsed = time.time() - self.start_time
@@ -756,7 +756,7 @@ class AIDriver:
                     time.sleep(sleep_time)
                 elif elapsed > DT * 1.5:
                     print(f"⚠️  Loop slow: {elapsed*1000:.1f}ms (target {DT*1000:.1f}ms)")
-        
+
         except KeyboardInterrupt:
             print("\n⏸️  Interrupted by user")
         except Exception as e:
@@ -768,24 +768,24 @@ class AIDriver:
 
     def shutdown(self):
         print("\n🛑 Shutting down...")
-        
+
         self.gamepad.reset()
         self.gamepad.update()
         self.physics_shm.close()
         self.graphics_shm.close()
-        
+
         # Save GA genome on shutdown if using GA
         if self.policy_name.lower().startswith('genetic') or 'ga' in self.policy_name.lower():
             MODEL_DIR.mkdir(exist_ok=True)
             np.save(self.ga_weights_path, self.best_genome)  # Save BEST genome
             print(f"💾 Best GA genome saved to {self.ga_weights_path} (reward: {self.best_reward:.2f})")
-        
+
         elapsed = time.time() - self.start_time
         print(f"\n📊 Session Stats")
         print(f"   Frames: {self.frames:,}")
         print(f"   Duration: {elapsed:.1f}s")
         print(f"   FPS: {self.frames/elapsed:.1f}")
-        
+
         if self.metrics_collector:
             metrics = self.metrics_collector.finalize()
             print(f"\n🏁 Performance Metrics")
@@ -796,13 +796,13 @@ class AIDriver:
             if metrics['avg_lap_time'] > 0:
                 print(f"   Avg Lap Time: {metrics['avg_lap_time']:.2f}s")
             print(f"   Steering Smoothness: {metrics['steering_smoothness']:.3f}")
-            
+
             # Save session log
             import json
             from datetime import datetime
             log_dir = Path("training_logs")
             log_dir.mkdir(exist_ok=True)
-            
+
             session_data = {
                 'timestamp': datetime.now().isoformat(),
                 'policy': self.policy_name,
@@ -812,7 +812,7 @@ class AIDriver:
                 'metrics': metrics,
                 'best_reward': getattr(self, 'best_reward', None)
             }
-            
+
             log_file = log_dir / f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(log_file, 'w') as f:
                 json.dump(session_data, f, indent=2)
@@ -835,22 +835,22 @@ if __name__ == "__main__":
                         help='Number of laps to complete in test mode (0 = run indefinitely)')
 
     args = parser.parse_args()
-    
+
     policy_kwargs = {
         'model_suffix': args.model_suffix,
         'ga_path': args.ga_path,
         'dql_path': args.dql_path
     }
-    
+
     print("=" * 60)
     print("🏎️  AI DRIVER - BATHURST EDITION")
     print("=" * 60)
-    
+
     driver = AIDriver(policy_type=args.policy, policy_kwargs=policy_kwargs)
-    
+
     if args.test_laps > 0:
         driver.test_mode = True
         driver.test_laps_target = args.test_laps
         print(f"🎯 Test mode: Will complete {args.test_laps} laps then exit")
-    
+
     driver.run()
