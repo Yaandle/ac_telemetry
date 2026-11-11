@@ -143,7 +143,7 @@ ACTION_LABELS = [
 def build_state_from_row(row: dict) -> np.ndarray:
     """
     Build state vector from CSV row (pandas Series or dict)
-    Used in: telemetry_analysis.py
+    Used in: legacy/telemetry_analysis_terminal.py
 
     Args:
         row: Dictionary-like object with feature names as keys
@@ -197,7 +197,7 @@ def build_state_from_memory(
 ) -> np.ndarray:
     """
     Build state vector from individual values (shared memory)
-    Used in: driver.py
+    Used in: legacy/driver.py
 
     Args:
         Individual feature values in exact order
