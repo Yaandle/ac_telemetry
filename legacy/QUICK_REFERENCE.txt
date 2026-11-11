@@ -11,7 +11,7 @@ SIMPLIFIED WORKFLOW (2-Step Process)
 ✅ WHAT YOU HAVE:
    - telemetry_logs/run2/acc_session_combined_2.csv (your session data)
    - feature_schema.py (feature definitions)
-   - telemetry_analyse_terminal.py (prepares ALL datasets)
+   - telemetry_analysis_terminal.py (prepares ALL datasets)
    - ml_trainer.py (trains ALL models with flags)
    - policies/ (all policies to test)
 
@@ -23,7 +23,7 @@ COMPLETE TRAINING PROCEDURE (Copy & Paste)
 STEP 1: Prepare ALL datasets from your CSV (ONE TIME)
 ────────────────────────────────────────────────────────────────────────────
 
-python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
+python telemetry_analysis_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
 
 This creates ALL datasets needed for training:
   ✅ ml_data/X_states.npy                      (frame-by-frame for LR/MLP)
@@ -110,7 +110,7 @@ WHY THIS IS BETTER
 ================================================================================
 
 OLD WAY (3 separate scripts):
-  1. python telemetry_analyse_terminal.py --ml
+  1. python telemetry_analysis_terminal.py --ml
   2. python ml_trainer.py
   3. python train/train_ga.py
   4. python train/train_dql.py
@@ -118,7 +118,7 @@ OLD WAY (3 separate scripts):
   Problem: Had to run 4 separate commands, datasets generated 3 times
 
 NEW WAY (2 scripts):
-  1. python telemetry_analyse_terminal.py --ml    (prepare ALL datasets ONCE)
+  1. python telemetry_analysis_terminal.py --ml    (prepare ALL datasets ONCE)
   2. python ml_trainer.py --all                   (train ALL models)
 
   Benefits:
@@ -192,7 +192,7 @@ TYPICAL WORKFLOW
 ================================================================================
 
 # First time setup
-python telemetry_analyse_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
+python telemetry_analysis_terminal.py telemetry_logs/run2/acc_session_combined_2.csv --ml
 
 # Train everything
 python ml_trainer.py --all
@@ -247,7 +247,7 @@ UPDATED DIRECTORY STRUCTURE
 e:\ac_telemetry\
 ├── reader.py                          ✅ Telemetry capture
 ├── feature_schema.py                  ✅ Feature definitions
-├── telemetry_analyse_terminal.py      ✅ Dataset preparation (--ml flag)
+├── telemetry_analysis_terminal.py      ✅ Dataset preparation (--ml flag)
 ├── ml_trainer.py                      ✅ ALL model training (--lr/mlp/ga/dql)
 ├── policies/                          ✅ Policy implementations
 │   ├── mlp_policy.py           ❌ REMOVED
@@ -276,7 +276,7 @@ SUMMARY
 Old workflow: 4 steps, multiple dataset generations
 New workflow: 2 steps, single dataset generation
 
-Step 1: python telemetry_analyse_terminal.py <csv> --ml
+Step 1: python telemetry_analysis_terminal.py <csv> --ml
 Step 2: python ml_trainer.py --all
 
 That's it! All models trained with consistent datasets.
