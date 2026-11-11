@@ -20,7 +20,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize session state
 if 'df' not in st.session_state:
     st.session_state.df = None
 if 'con' not in st.session_state:
@@ -277,7 +276,6 @@ elif page == "📊 Frequency Analysis":
     with col2:
         bin_method = st.selectbox("Binning Method", ["Equal Width", "Equal Frequency (Quantile)"])
 
-    # Create bins
     if bin_method == "Equal Width":
         counts, bin_edges = np.histogram(data, bins=n_bins)
     else:  # Equal Frequency

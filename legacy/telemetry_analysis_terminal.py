@@ -121,7 +121,6 @@ class FeatureEngineer:
         if len(X) < sequence_length:
             return np.array([]), np.array([])
 
-        # Create sliding windows
         X_sequences = []
         y_sequences = []
 

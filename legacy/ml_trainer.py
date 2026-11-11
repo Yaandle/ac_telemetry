@@ -25,7 +25,6 @@ import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend
 import matplotlib.pyplot as plt
 
-# Import feature schema
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root: feature_schema.py lives there
 try:
     from feature_schema import (
@@ -212,7 +211,6 @@ class GeneticAlgorithmTrainer:
         print(f"    Generations: {self.generations}")
         print(f"    Episodes: {len(episodes_states)}")
 
-        # Initialize population
         population = [self.create_individual() for _ in range(self.population_size)]
 
         for gen in range(self.generations):
@@ -399,7 +397,6 @@ class DQLTrainer:
         # Convert actions to discrete indices
         action_indices = np.array([self.action_to_index(a) for a in actions])
 
-        # Create PyTorch dataset
         dataset = TensorDataset(
             torch.FloatTensor(states),
             torch.LongTensor(action_indices),
