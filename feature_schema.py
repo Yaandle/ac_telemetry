@@ -132,7 +132,7 @@ AVAILABLE_FIELDS = {
 # Action labels (outputs, never inputs)
 ACTION_LABELS = [
     "gas",
-    "brake", 
+    "brake",
     "steer"
 ]
 
@@ -144,10 +144,10 @@ def build_state_from_row(row: dict) -> np.ndarray:
     """
     Build state vector from CSV row (pandas Series or dict)
     Used in: telemetry_analysis.py
-    
+
     Args:
         row: Dictionary-like object with feature names as keys
-        
+
     Returns:
         State vector as numpy array, shape (17,)
     """
@@ -171,7 +171,7 @@ def build_state_from_row(row: dict) -> np.ndarray:
         float(row['distance_m']),
         float(row['lap_fraction']),
     ], dtype=np.float32)
-    
+
     return state
 
 
@@ -198,10 +198,10 @@ def build_state_from_memory(
     """
     Build state vector from individual values (shared memory)
     Used in: driver.py
-    
+
     Args:
         Individual feature values in exact order
-        
+
     Returns:
         State vector as numpy array, shape (17,)
     """
@@ -227,24 +227,24 @@ def build_state_from_memory(
         0.0,                 # distance_m (unknown)
         lap_fraction,
     ], dtype=np.float32)
-    
+
     return state
 
 
 def validate_state(state: np.ndarray, context: str = ""):
     """
     Validate state vector has correct shape
-    
+
     Args:
         state: State vector to validate
         context: Optional context string for error message
-        
+
     Raises:
         AssertionError: If state shape doesn't match expected feature count
     """
     expected = len(POLICY_FEATURES)
     actual = state.shape[-1] if state.ndim > 0 else 0
-    
+
     if actual != expected:
         error_msg = f"Feature count mismatch{' in ' + context if context else ''}!\n"
         error_msg += f"  Expected: {expected} features\n"
@@ -256,23 +256,23 @@ def validate_state(state: np.ndarray, context: str = ""):
 def validate_normalization(norm_min: np.ndarray, norm_max: np.ndarray):
     """
     Validate normalization arrays match feature count
-    
+
     Args:
         norm_min: Minimum values for normalization
         norm_max: Maximum values for normalization
-        
+
     Raises:
         AssertionError: If normalization arrays don't match feature count
     """
     expected = len(POLICY_FEATURES)
-    
+
     if len(norm_min) != expected:
         raise AssertionError(
             f"Normalization min array mismatch!\n"
             f"  Expected: {expected} features\n"
             f"  Got: {len(norm_min)} features"
         )
-    
+
     if len(norm_max) != expected:
         raise AssertionError(
             f"Normalization max array mismatch!\n"
@@ -428,12 +428,12 @@ def print_schema_info():
     for i, name in enumerate(POLICY_FEATURES):
         desc = FEATURE_DESCRIPTIONS.get(name, "No description")
         print(f"  [{i:2d}] {name:25s} - {desc}")
-    
+
     print(f"\nACTION LABELS ({len(ACTION_LABELS)}):")
     for i, name in enumerate(ACTION_LABELS):
         desc = ACTION_DESCRIPTIONS.get(name, "No description")
         print(f"  [{i}] {name:10s} - {desc}")
-    
+
     print("\n" + "=" * 70)
 
 

@@ -16,7 +16,7 @@ The goal is completion, iteration, and system understanding over novelty.
 - Real input → real output
 - Fully working and documented
 
-**Outcome:**  
+**Outcome:**
 `reader.py` captures live ACC telemetry at **100 Hz** and logs structured CSV data.
 
 ---
@@ -30,8 +30,8 @@ Stage 2 consists of two parallel analytics implementations, both built directly 
 - Change one dimension at a time
 - Learn what matters vs. what doesn't
 
-**Outcome:**            
-`telemetry_analysis_streamlit.py` provides UI visualisations and analytics;         
+**Outcome:**
+`telemetry_analysis_streamlit.py` provides UI visualisations and analytics;
 `telemetry_analysis_terminal.py` provides CLI-based analytics and ML dataset preparation.
 
 ---
@@ -71,7 +71,7 @@ Testing multiple learning paradigms against the same task to expose their failur
 
 **Planned focus:**
 - Linear Regression (baseline)
-- MLP architecture 
+- MLP architecture
 - Genetic Algorithms
 - Deep Q-Learning
 

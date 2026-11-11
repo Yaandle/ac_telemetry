@@ -34,8 +34,8 @@ GRAPHICS_SHM = "Local\\acpmf_graphics"
 #   int rpm;                     // 20     (4 bytes)
 #   float steerAngle;            // 24     (4 bytes)
 #   float speedKmh;              // 28     (4 bytes)
-#   float velocity[3];           // 32-43  (12 bytes) 
-#   float accG[3];               // 44-55  (12 bytes) 
+#   float velocity[3];           // 32-43  (12 bytes)
+#   float accG[3];               // 44-55  (12 bytes)
 #   float wheelSlip[4];          // 56-71  (16 bytes)
 
 #   float wheelPressure[4];      // 88-103 (16 bytes)
@@ -86,31 +86,31 @@ class TelemetryFrame:
     lap_time_str: str
     completed_laps: int
     current_lap: int
-    
+
     # State Variables (inputs)
     speed_kmh: float
     speed_ms: float
     gear: int
     rpm: int
-    
+
     # Velocity (m/s)
     vx: float
     vy: float
     vz: float
-    
+
     # Derived kinematics (m/s²)
-    accel_longitudinal: float  
-    accel_lateral: float       
-    
+    accel_longitudinal: float
+    accel_lateral: float
+
     # Control Inputs (actions)
     gas: float
     brake: float
     steer: float
-    
+
     # Position & Distance (for debugging/telemetry)
     distance_m: float
     lap_fraction: float
-    
+
     # Wheel Data (FL, FR, RL, RR)
     wheel_slip_fl: float
     wheel_slip_fr: float
@@ -121,7 +121,7 @@ class TelemetryFrame:
     suspension_travel_fr: float  # meters
     suspension_travel_rl: float  # meters
     suspension_travel_rr: float  # meters
-    
+
     # Additional (for debugging/telemetry)
     fuel_kg: float
 
@@ -132,12 +132,12 @@ class SmoothingFilter:
         self.gas_buffer = deque(maxlen=window_size)
         self.brake_buffer = deque(maxlen=window_size)
         self.steer_buffer = deque(maxlen=window_size)
-    
+
     def update(self, gas: float, brake: float, steer: float):
         self.gas_buffer.append(gas)
         self.brake_buffer.append(brake)
         self.steer_buffer.append(steer)
-        
+
         return (
             sum(self.gas_buffer) / len(self.gas_buffer),
             sum(self.brake_buffer) / len(self.brake_buffer),
@@ -190,7 +190,7 @@ class DistanceTracker:
         self.prev_time = 0.0
         self.track_length = 0.0
         self.lap_distance = 0.0
-        
+
     def update(self, speed_ms: float, elapsed: float) -> float:
         if self.prev_time > 0:
             dt = elapsed - self.prev_time
@@ -198,18 +198,18 @@ class DistanceTracker:
             distance_delta = avg_speed * dt
             self.total_distance += distance_delta
             self.lap_distance += distance_delta
-        
+
         self.prev_speed_ms = speed_ms
         self.prev_time = elapsed
         return self.total_distance
-    
+
     def get_lap_fraction(self) -> float:
         """Return progress through lap [0-1]"""
         if self.track_length > 0 and self.lap_distance > 0:
             fraction = self.lap_distance / self.track_length
             return min(fraction, 0.999)  # Cap at 0.999 to avoid overflow
         return 0.0
-    
+
     def mark_lap_complete(self):
         """Update track length estimate on lap completion"""
         if self.lap_distance > 100:  # Sanity check (at least 100m)
@@ -218,7 +218,7 @@ class DistanceTracker:
             else:
                 # Exponential moving average
                 self.track_length = 0.9 * self.track_length + 0.1 * self.lap_distance
-        
+
         # Reset for next lap
         self.lap_distance = 0.0
 
@@ -230,7 +230,7 @@ class SessionTracker:
         self.start_time = time.time()
         self.lap_count = 0
         self.sample_count = 0
-        
+
         # Statistics
         self.max_speed = 0.0
         self.max_gas = 0.0
@@ -242,10 +242,10 @@ class SessionTracker:
 
         # Lap tracking
         self.last_lap_number = 0
-        
+
     def update(self, frame: TelemetryFrame):
         self.sample_count += 1
-        
+
         # Update maxima
         self.max_speed = max(self.max_speed, frame.speed_kmh)
         self.max_gas = max(self.max_gas, frame.gas)
@@ -261,7 +261,7 @@ class SessionTracker:
             self.lap_count += 1
             return True
         return False
-    
+
     def get_summary(self):
         elapsed = time.time() - self.start_time
         return {
@@ -283,7 +283,7 @@ class SessionTracker:
 
 class ACTelemetryReader:
     """Read and parse Assetto Corsa Competizione shared memory"""
-    
+
     def __init__(self):
         self.physics_shm: Optional[mmap.mmap] = None
         self.graphics_shm: Optional[mmap.mmap] = None
@@ -291,7 +291,7 @@ class ACTelemetryReader:
         self.wheel_slip_filter = WheelSlipFilter(window=3, speed_threshold_kmh=2.0, cap=3.0)
         self.distance_tracker = DistanceTracker()
         self.session = SessionTracker()
-        
+
     def connect(self):
         """Open shared memory connections"""
         try:
@@ -300,21 +300,21 @@ class ACTelemetryReader:
             return True
         except FileNotFoundError:
             return False
-    
+
     def read_frame(self) -> Optional[TelemetryFrame]:
         """Read and parse a complete telemetry frame"""
         if not self.physics_shm or not self.graphics_shm:
             return None
-        
+
         try:
             # Read physics block
             self.physics_shm.seek(0)
             physics_data = self.physics_shm.read(READ_BLOCK_SIZE)
-            
+
             # Read graphics block
             self.graphics_shm.seek(0)
             graphics_data = self.graphics_shm.read(GRAPHICS_BLOCK_SIZE)
-            
+
             # Parse basic controls
             gas = struct.unpack('<f', physics_data[GAS_OFFSET:GAS_OFFSET+4])[0]
             brake = struct.unpack('<f', physics_data[BRAKE_OFFSET:BRAKE_OFFSET+4])[0]
@@ -331,30 +331,30 @@ class ACTelemetryReader:
                 gas = 0.0
             if abs(brake) < DEADZONE_BRAKE:
                 brake = 0.0
-            
+
             # Parse velocity
             vx = struct.unpack('<f', physics_data[VELOCITY_OFFSET:VELOCITY_OFFSET+4])[0]
             vy = struct.unpack('<f', physics_data[VELOCITY_OFFSET+4:VELOCITY_OFFSET+8])[0]
             vz = struct.unpack('<f', physics_data[VELOCITY_OFFSET+8:VELOCITY_OFFSET+12])[0]
-            
+
             # Parse acceleration (raw G-forces)
             ax = struct.unpack('<f', physics_data[ACCEL_OFFSET:ACCEL_OFFSET+4])[0]
             az = struct.unpack('<f', physics_data[ACCEL_OFFSET+8:ACCEL_OFFSET+12])[0]
-            
+
             # Derive longitudinal/lateral (these are in m/s²)
             accel_longitudinal = ax
             accel_lateral = az
 
             def read_float_array(offset, count=4):
-                return [struct.unpack('<f', physics_data[offset + i*4:offset + i*4 + 4])[0] 
+                return [struct.unpack('<f', physics_data[offset + i*4:offset + i*4 + 4])[0]
                        for i in range(count)]
-            
+
             # Parse wheel slip (4 wheels: FL, FR, RL, RR) - raw readings
             wheel_slip_raw = read_float_array(WHEEL_SLIP_OFFSET)
 
             # Parse suspension travel (4 wheels: FL, FR, RL, RR) - in meters
             suspension_travel = [
-                struct.unpack('<f', physics_data[SUSPENSION_TRAVEL_OFFSET + i*4 : SUSPENSION_TRAVEL_OFFSET + i*4 + 4])[0] 
+                struct.unpack('<f', physics_data[SUSPENSION_TRAVEL_OFFSET + i*4 : SUSPENSION_TRAVEL_OFFSET + i*4 + 4])[0]
                 for i in range(4)
             ]
 
@@ -362,11 +362,11 @@ class ACTelemetryReader:
             lap_time_bytes = graphics_data[GRAPHICS_CURRENT_TIME:GRAPHICS_CURRENT_TIME+30]
             lap_time_str = lap_time_bytes.decode('utf-16le').strip('\x00')
             completed_laps = struct.unpack('<i', graphics_data[GRAPHICS_COMPLETED_LAPS:GRAPHICS_COMPLETED_LAPS+4])[0]
-            
+
             # Timing
             elapsed = time.time() - self.session.start_time
             current_lap = completed_laps + 1
-            
+
             # Derived features
             speed_ms = speed_kmh / 3.6
             gear_display = max(gear - 1, 0)
@@ -376,11 +376,11 @@ class ACTelemetryReader:
             speed_ms = np.clip(speed_ms, 0, 111.1)  # 400 km/h in m/s
             rpm = np.clip(rpm, 0, 12000)
             gear_display = np.clip(gear_display, 0, 8)
-            
+
             # Distance and lap fraction
             distance = self.distance_tracker.update(speed_ms, elapsed)
             lap_fraction = self.distance_tracker.get_lap_fraction()
-            
+
             # Process wheel slip: mask at low speed, median-smooth, cap outliers
             wheel_slip_processed, wheel_slip_valid = self.wheel_slip_filter.update(wheel_slip_raw, speed_kmh)
 
@@ -420,11 +420,11 @@ class ACTelemetryReader:
                 self.distance_tracker.mark_lap_complete()
 
             return frame
-            
+
         except Exception as e:
             print(f"Error reading telemetry: {e}")
             return None
-    
+
     def close(self):
         """Close shared memory connections"""
         if self.physics_shm:
@@ -481,7 +481,7 @@ def frame_to_csv_row(frame: TelemetryFrame):
         f"{frame.wheel_slip_fl:.4f}", f"{frame.wheel_slip_fr:.4f}",
         f"{frame.wheel_slip_rl:.4f}", f"{frame.wheel_slip_rr:.4f}",
         int(frame.wheel_slip_valid),
-        f"{frame.suspension_travel_fl:.4f}", f"{frame.suspension_travel_fr:.4f}",  
+        f"{frame.suspension_travel_fl:.4f}", f"{frame.suspension_travel_fr:.4f}",
         f"{frame.suspension_travel_rl:.4f}", f"{frame.suspension_travel_rr:.4f}",
         f"{frame.fuel_kg:.2f}"
     ]
@@ -512,36 +512,36 @@ def main():
     print("ASSETTO CORSA COMPETIZIONE TELEMETRY LOGGER")
     print("High-frequency data capture (ACC Shared Memory v1.8.12)")
     print("="*70)
-    
+
     csv_path = create_log_file()
     print(f"📁 Logging to: {csv_path}")
-    
+
     reader = ACTelemetryReader()
-    
+
     try:
         print("🔌 Connecting to shared memory...")
         if not reader.connect():
             print("\n❌ ACC shared memory not found. Is Assetto Corsa Competizione running?")
             return
-        
+
         print("✓ Connected!")
         print(f"⚙️  Sampling at {SAMPLING_HZ} Hz")
         print(f"🔧 Smoothing window: {SMOOTHING_WINDOW} samples")
         print(f"📊 Capturing: {len(get_csv_headers())} channels")
         print("\n🟢 Recording... (Ctrl+C to stop)\n")
-        
+
         with open(csv_path, "w", newline="") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow(get_csv_headers())
-            
+
             last_print_time = time.time()
-            
+
             while True:
                 frame = reader.read_frame()
-                
+
                 if frame:
                     writer.writerow(frame_to_csv_row(frame))
-                    
+
                     # Periodic status update (every 5 seconds)
                     if time.time() - last_print_time >= 5.0:
                         print(f"{frame.timestamp/60:5.1f}m | Lap {frame.current_lap} | "
@@ -549,23 +549,23 @@ def main():
                               f"Top: {reader.session.max_speed:5.0f} | "
                               f"Samples: {reader.session.sample_count:,}")
                         last_print_time = time.time()
-                    
+
                     # Flush every 500 samples
                     if reader.session.sample_count % 500 == 0:
                         csv_file.flush()
-                
+
                 time.sleep(1.0 / SAMPLING_HZ)
-    
+
     except KeyboardInterrupt:
         print(f"\n\n⏹️  Recording stopped")
         print(f"💾 Saved: {csv_path}")
         print_session_summary(reader.session)
-    
+
     except Exception as e:
         print(f"\n❌ Error: {e}")
         import traceback
         traceback.print_exc()
-    
+
     finally:
         reader.close()
 

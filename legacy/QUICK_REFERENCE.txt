@@ -114,13 +114,13 @@ OLD WAY (3 separate scripts):
   2. python ml_trainer.py
   3. python train/train_ga.py
   4. python train/train_dql.py
-  
+
   Problem: Had to run 4 separate commands, datasets generated 3 times
 
 NEW WAY (2 scripts):
   1. python telemetry_analyse_terminal.py --ml    (prepare ALL datasets ONCE)
   2. python ml_trainer.py --all                   (train ALL models)
-  
+
   Benefits:
   ✅ Datasets prepared only once
   ✅ All models use SAME normalization

@@ -21,7 +21,7 @@ con.register("telemetry_data", df)
 #======= Session Summary =======#
 st.header("Session Summary")
 session_summary_query = """
-    SELECT 
+    SELECT
     COUNT(*) as total_samples,
     MAX(current_lap) as total_laps,
     ROUND(MAX(timestamp) / 60, 2) as duration_min,
@@ -36,7 +36,7 @@ st.write("---")
 #======= Lap Summary =======#
 st.header("Lap-by-Lap Summary")
 lap_query = """
-SELECT 
+SELECT
     current_lap as lap,
     COUNT(*) as samples,
     ROUND(MAX(speed_kmh), 1) as top_speed,
@@ -57,8 +57,8 @@ st.header("Input Distributions")
 st.text("🟢 Gas (Throttle) Usage")
 
 throttle_query = """
-SELECT 
-    CASE 
+SELECT
+    CASE
         WHEN gas > 0.9 THEN 'Full (>90%)'
         WHEN gas > 0.7 THEN 'High (60-90%)'
         WHEN gas > 0.5 THEN 'Medium (30-60%)'
@@ -88,8 +88,8 @@ st.code("\n".join(lines), language="text")
 st.text("🛑 Brake Usage")
 
 brake_query = """
-SELECT 
-    CASE 
+SELECT
+    CASE
         WHEN brake > 0.9 THEN 'Full (>90%)'
         WHEN brake > 0.7 THEN 'Hard (>70%)'
         WHEN brake > 0.5 THEN 'Medium (60-90%)'
@@ -172,7 +172,7 @@ st.header(" Wheel Telemetry Analysis")
 st.subheader("Wheel Slip (Average | Max)")
 
 wheel_slip_query = """
-SELECT 
+SELECT
     ROUND(AVG(wheel_slip_fl), 4) as avg_fl,
     ROUND(MAX(wheel_slip_fl), 4) as max_fl,
     ROUND(AVG(wheel_slip_fr), 4) as avg_fr,
@@ -198,7 +198,7 @@ st.code("\n".join(slip_lines), language="text")
 st.subheader(" Suspension Travel Analysis")
 
 suspension_query = """
-SELECT 
+SELECT
     ROUND(AVG(suspension_travel_fl), 2) as avg_fl,
     ROUND(AVG(suspension_travel_fr), 2) as avg_fr,
     ROUND(AVG(suspension_travel_rl), 2) as avg_rl,
