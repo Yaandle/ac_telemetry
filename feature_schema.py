@@ -6,8 +6,7 @@ This file defines the exact feature order used across all components.
 
 import numpy as np
 
-# Sequence settings for temporal models
-# Match dataset: sequence length used when creating temporal sequences
+# Sequence settings for temporal models (must match the sequence length used when building the dataset)
 SEQUENCE_LENGTH = 15
 STRIDE = 1
 
@@ -419,7 +418,7 @@ ACTION_DESCRIPTIONS = {
 
 
 def print_schema_info():
-    """Print schema information for debugging"""
+    """Print schema information for debugging."""
     print("=" * 70)
     print("FEATURE SCHEMA")
     print("=" * 70)
