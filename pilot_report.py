@@ -67,11 +67,15 @@ def report(path, track, edges, margin, tail):
         side_ = "left" if np.median(lat[k]) < 0 else "right"
         print(f"   off {side_} {t0:.1f}-{t1:.1f} s at {s0:.0f}-{s1:.0f} m ({100 * s0 / L:.1f}%), up to {past[k].max():.2f} m past")
     if "acc_valid" in d.columns and d.acc_valid.notna().any():
-        inv = d[d.acc_valid == 0]
-        if len(inv):
-            r = inv.iloc[0]
+        v = d.acc_valid.to_numpy()
+        if v[0] == 0:
+            print("ACC: the lap was already invalid when the run started (carried over from before)")
+        # Each change from valid to invalid (the flag resets to 1 at ACC's lap line)
+        drops = np.where((v[1:] == 0) & (v[:-1] == 1))[0] + 1
+        for k in drops:
+            r = d.iloc[k]
             print(f"ACC invalidated the lap at t {r.t:.1f} s, {r.s:.0f} m ({100 * r.s / L:.1f}%), lat {r.lat:+.2f} m")
-        else:
+        if not len(drops) and v[0] != 0:
             print("ACC: lap valid throughout")
     for lap in meta.get("laps", []):
         print(f"   lap {lap['lap']}: {lap['time_s']} s, ACC {lap['acc_s']}, valid {lap['acc_valid']}, "
