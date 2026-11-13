@@ -6,8 +6,7 @@ This file defines the exact feature order used across all components.
 
 import numpy as np
 
-# Sequence settings for temporal models
-# Match dataset: sequence length used when creating temporal sequences
+# Sequence settings for temporal models (must match the sequence length used when building the dataset)
 SEQUENCE_LENGTH = 15
 STRIDE = 1
 
@@ -143,7 +142,7 @@ ACTION_LABELS = [
 def build_state_from_row(row: dict) -> np.ndarray:
     """
     Build state vector from CSV row (pandas Series or dict)
-    Used in: telemetry_analysis.py
+    Used in: legacy/telemetry_analysis_terminal.py
 
     Args:
         row: Dictionary-like object with feature names as keys
@@ -197,7 +196,7 @@ def build_state_from_memory(
 ) -> np.ndarray:
     """
     Build state vector from individual values (shared memory)
-    Used in: driver.py
+    Used in: legacy/driver.py
 
     Args:
         Individual feature values in exact order
@@ -419,7 +418,7 @@ ACTION_DESCRIPTIONS = {
 
 
 def print_schema_info():
-    """Print schema information for debugging"""
+    """Print schema information for debugging."""
     print("=" * 70)
     print("FEATURE SCHEMA")
     print("=" * 70)

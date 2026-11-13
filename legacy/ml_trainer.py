@@ -2,7 +2,7 @@
 """
 Telemetry ML Trainer - Baseline Models for Control Prediction
 Train and evaluate simple models to predict driver inputs from state
-UPDATED: Uses feature_schema.py for consistency and validation
+Uses feature_schema.py for consistency and validation
 """
 
 import sys
