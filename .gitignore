@@ -13,6 +13,7 @@ ml_data/
 ml_results/
 training_logs/
 graphs/
+tracks/
 *.csv
 *.ods
 *.npy
